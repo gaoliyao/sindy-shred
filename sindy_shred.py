@@ -174,7 +174,6 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
     patience_counter = 0
     best_params = model.state_dict()
     for epoch in range(1, num_epochs + 1):
-        print("Epoch:", epoch)
         for data in train_loader:
             model.train()
             outputs, h_gru, h_sindy = model(data[0], sindy=True)
@@ -182,7 +181,6 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
             loss = criterion(outputs, data[1]) + criterion(h_gru, h_sindy) * sindy_regularization + torch.abs(torch.mean(h_gru)) * 0.1
             loss.backward()
             optimizer_everything.step()
-            print(loss)
         print(epoch, ":", loss)
         if epoch % thres_epoch == 0 and epoch != 0:
             model.e_sindy.thresholding(threshold=threshold, base_threshold=base_threshold)
