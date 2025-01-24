@@ -38,7 +38,10 @@ SINDy-SHRED achieves **state-of-the-art performance** in various applications, i
 - Matplotlib
 - scikit-learn
 
-### Dataset
+### 📂 Dataset
+Please download the dataset and place it into the `Data/` folder, as GitHub might mistakenly ignore large files.
+
+**Download Link:**  🔗 [Google Drive: Dataset](https://drive.google.com/file/d/1IrKFsYEcUL8xxZ0PUSLC3VrpTvVneDhj/view?usp=sharing)
 
 
 ---
