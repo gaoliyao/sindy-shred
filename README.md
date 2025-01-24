@@ -42,20 +42,17 @@ pip install -r requirements.txt
 ---
 
 ## 🚀 Usage
-### 1️⃣ Train a SINDy-SHRED model
+### 1️⃣ Define Train a SINDy-SHRED model
 ```python
 import sindy_shred
 
-latent_dim = 3
-poly_order = 3
-include_sine = False
 library_dim = sindy_shred.library_size(latent_dim, poly_order, include_sine, True)
 
 # Initialize and train the SINDy-SHRED model
 shred = sindy_shred.SINDy_SHRED(
-    num_sensors, m, hidden_size=latent_dim, hidden_layers=2, l1=350, l2=400, dropout=0.1, 
-    library_dim=library_dim, poly_order=poly_order, include_sine=include_sine, dt=1/52.0*0.1, layer_norm=False
-).to(device)
+    num_sensors, m, hidden_size=3, hidden_layers=2, l1=350, l2=400, dropout=0.1, 
+    library_dim=library_dim, poly_order=3, include_sine=False, dt=1/52.0*0.1, layer_norm=False
+)
 
 validation_errors = sindy_shred.fit(
     shred, train_dataset, valid_dataset, batch_size=128, num_epochs=600, lr=1e-3, verbose=True, 
@@ -68,11 +65,14 @@ validation_errors = sindy_shred.fit(
 ## 📖 Citation
 If you find **SINDy-SHRED** useful in your research, please cite:
 ```bibtex
-@article{yourcitation2024,
-  title={Sparse identification of nonlinear dynamics with Shallow Recurrent Decoder Networks},
-  author={Gao, Liyao Mars and Williams, Jan P. and Kutz, J. Nathan},
-  journal={arXiv preprint arXiv:2501.13329},
-  year={2025}
+@misc{gao2025sparse,
+      title={Sparse identification of nonlinear dynamics and Koopman operators with Shallow Recurrent Decoder Networks}, 
+      author={Mars Liyao Gao and Jan P. Williams and J. Nathan Kutz},
+      year={2025},
+      eprint={2501.13329},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2501.13329}, 
 }
 ```
 
