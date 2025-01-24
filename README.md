@@ -5,6 +5,9 @@
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)  
 
 ## 📌 Overview
+
+<img width="924" alt="Screen Shot 2025-01-24 at 6 09 27 AM" src="https://github.com/user-attachments/assets/4b37563a-f6cc-49e5-8bd9-44842b70959f" />
+
 SINDy-SHRED is a method for **spatiotemporal modeling of real-world data** that integrates **sensing and model identification** using a **shallow recurrent decoder network**. It efficiently reconstructs the full spatiotemporal field from a few sensor measurements while enforcing **interpretable latent space dynamics**.
 
 - **Sparse Identification of Nonlinear Dynamics (SINDy)** regularization ensures latent space dynamics follow a **SINDy-class functional**.
@@ -22,22 +25,21 @@ SINDy-SHRED achieves **state-of-the-art performance** in various applications, i
 📄 **Title:** *Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder networks (SINDy-SHRED)*  
 🔗 **Preprint:** [arXiv:2501.13329](https://arxiv.org/pdf/2501.13329)  
 
+
+
 ---
 
 ## 🔧 Installation
-```bash
-git clone https://github.com/your-username/SINDy-SHRED.git
-cd SINDy-SHRED
-pip install -r requirements.txt
-```
-
 ### Dependencies
 - Python 3.8+
 - PyTorch
 - NumPy
 - SciPy
 - Matplotlib
-- scikit-learn  
+- scikit-learn
+
+### Dataset
+
 
 ---
 
@@ -59,6 +61,22 @@ validation_errors = sindy_shred.fit(
     threshold=0.25, patience=5, sindy_regularization=10.0, optimizer="Lion", thres_epoch=100
 )
 ```
+
+---
+
+## 📊 Results & Benchmarks
+SINDy-SHRED **outperforms state-of-the-art models** on real and synthetic datasets, including:
+- ✅ **Convolutional LSTM**  
+- ✅ **PredRNN**  
+- ✅ **ResNet**  
+- ✅ **SimVP**  
+
+### 🌍 Real-World SST Data Example
+<img width="1284" alt="Screen Shot 2025-01-24 at 6 11 38 AM" src="https://github.com/user-attachments/assets/ecb0bedc-ab58-46f5-81d5-51a2cc31e575" />
+
+### 📽 Pendulum Video Prediction Example
+<img width="871" alt="Screen Shot 2025-01-24 at 6 12 36 AM" src="https://github.com/user-attachments/assets/65e4260d-2723-4de1-ae9c-d95212cad939" />
+
 
 ---
 
