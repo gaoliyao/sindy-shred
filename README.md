@@ -3,6 +3,8 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2501.13329-b31b1b.svg)](https://arxiv.org/abs/2501.13329)  
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)  
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)  
+[![YouTube](https://img.shields.io/badge/YouTube-Watch-red?logo=youtube)](https://www.youtube.com/watch?v=UYDfWJxvKGw)
+
 
 ## 📌 Overview
 
@@ -24,7 +26,6 @@ SINDy-SHRED achieves **state-of-the-art performance** in various applications, i
 ## 📝 Paper
 📄 **Title:** *Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder networks (SINDy-SHRED)*  
 🔗 **Preprint:** [arXiv:2501.13329](https://arxiv.org/pdf/2501.13329)  
-
 
 
 ---
