@@ -156,18 +156,6 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
                                                   {"params": model.linear2.parameters()},
                                                   {"params": model.linear3.parameters()},
                                                   {"params": model.e_sindy.parameters()}], lr=lr, weight_decay=0.01)
-    if optimizer == "Lion":
-        from lion_pytorch import Lion
-        optimizer = Lion([{"params": model.gru.parameters(), "lr": 0.01},
-                                       {"params": model.linear1.parameters()},
-                                       {"params": model.linear2.parameters()},
-                                       {"params": model.linear3.parameters()}], lr=lr, weight_decay=0.01)
-        optimizer_sindy = Lion([{"params": model.e_sindy.parameters(), "lr": 0.01}], lr=lr, weight_decay=1)
-        optimizer_everything = Lion([{"params": model.gru.parameters()},
-                                                  {"params": model.linear1.parameters()},
-                                                  {"params": model.linear2.parameters()},
-                                                  {"params": model.linear3.parameters()},
-                                                  {"params": model.e_sindy.parameters()}], lr=lr, weight_decay=weight_decay)
     
     val_error_list = []
     patience_counter = 0
