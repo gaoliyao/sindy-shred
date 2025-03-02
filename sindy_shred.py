@@ -2,7 +2,6 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 from sindy import sindy_library_torch, e_sindy_library_torch
-from torchdyn.numerics import odeint
 
 class SINDy(torch.nn.Module):
     def __init__(self, latent_dim, library_dim, poly_order, include_sine):
