@@ -1,7 +1,13 @@
+# Author: Mars Gao
+# Date: Nov/17/2021
+
+# Modification on cuda treatment by Stefano Riva (March 2025)
+
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
 from sindy import sindy_library_torch, e_sindy_library_torch
+from torchdyn.numerics import odeint
 
 class SINDy(torch.nn.Module):
     def __init__(self, latent_dim, library_dim, poly_order, include_sine):
@@ -12,7 +18,8 @@ class SINDy(torch.nn.Module):
         self.library_dim = library_dim
         self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True)
         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
+        # self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
+        self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False)
         self.coefficients = torch.nn.Parameter(self.coefficients)
 
     def forward(self, h, dt):
@@ -26,15 +33,23 @@ class SINDy(torch.nn.Module):
         
     def add_noise(self, noise=0.1):
         self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False)
         
     def recenter(self):
         self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False)   
 
 class E_SINDy(torch.nn.Module):
-    def __init__(self, num_replicates, latent_dim, library_dim, poly_order, include_sine):
+    def __init__(self, num_replicates, latent_dim, library_dim, poly_order, include_sine, device=None):
         super().__init__()
+
+        if device is None:
+            self.device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+        else:
+            self.device = device
+
         self.num_replicates = num_replicates
         self.latent_dim = latent_dim
         self.poly_order = poly_order
@@ -42,7 +57,8 @@ class E_SINDy(torch.nn.Module):
         self.library_dim = library_dim
         self.coefficients = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=True)
         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).cuda()
+        # self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).cuda()
+        self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).to(self.device)
         self.coefficients = torch.nn.Parameter(self.coefficients)
 
     def forward(self, h_replicates, dt):
@@ -63,19 +79,32 @@ class E_SINDy(torch.nn.Module):
         
     def add_noise(self, noise=0.1):
         self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        # self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()  
+        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).to(self.device)
         
     def recenter(self):
         self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()  
+        # self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()  
+        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).to(self.device)
 
 class SINDy_SHRED(torch.nn.Module):
-    def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, layer_norm=False):
+    def __init__(self, input_size, output_size, 
+                 hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, 
+                 dt=0.03, layer_norm=False, num_replicates=10, device=None):
         super(SINDy_SHRED, self).__init__()
+
+        if device is None:
+            self.device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+        else:
+            self.device = device
+
+        # self.gru = torch.nn.GRU(input_size=input_size, hidden_size=hidden_size,
+        #                                 num_layers=hidden_layers, batch_first=True).cuda()
         self.gru = torch.nn.GRU(input_size=input_size, hidden_size=hidden_size,
-                                        num_layers=hidden_layers, batch_first=True).cuda()
-        self.num_replicates = 10
-        self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine).cuda()
+                                        num_layers=hidden_layers, batch_first=True).to(self.device)
+        self.num_replicates = num_replicates
+        # self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine).cuda()
+        self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine, device=self.device).to(self.device)
         
         self.linear1 = torch.nn.Linear(hidden_size, l1)
         self.linear2 = torch.nn.Linear(l1, l2)
@@ -89,10 +118,24 @@ class SINDy_SHRED(torch.nn.Module):
         self.use_layer_norm = layer_norm
         self.layer_norm_gru = torch.nn.LayerNorm(hidden_size)
 
+    def freeze(self):
+
+        self.eval()
+        
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def unfreeze(self):
+
+        self.train()
+        
+        for param in self.parameters():
+            param.requires_grad = True
+
     def forward(self, x, sindy=False):
-        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float)
-        if next(self.parameters()).is_cuda:
-            h_0 = h_0.cuda()
+        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float).to(self.device)
+        # if next(self.parameters()).is_cuda:
+        #     h_0 = h_0.cuda()
         
         _, h_out = self.gru(x, h_0)
         h_out = h_out[-1].view(-1, self.hidden_size)
@@ -118,10 +161,22 @@ class SINDy_SHRED(torch.nn.Module):
                 output = output, h_out_replicates, ht_replicates
         return output
     
+    def latent2output(self, h):
+        output = self.linear1(h)
+        output = self.dropout(output)
+        output = torch.nn.functional.relu(output)
+
+        output = self.linear2(output)
+        output = self.dropout(output)
+        output = torch.nn.functional.relu(output)
+
+        output = self.linear3(output)
+        return output
+    
     def gru_outputs(self, x, sindy=False):
-        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float)
-        if next(self.parameters()).is_cuda:
-            h_0 = h_0.cuda()
+        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float).to(self.device)
+        # if next(self.parameters()).is_cuda:
+        #     h_0 = h_0.cuda()
         _, h_out = self.gru(x, h_0)
         h_out = h_out[-1].view(-1, self.hidden_size)
         if self.use_layer_norm:
@@ -156,6 +211,18 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
                                                   {"params": model.linear2.parameters()},
                                                   {"params": model.linear3.parameters()},
                                                   {"params": model.e_sindy.parameters()}], lr=lr, weight_decay=0.01)
+    if optimizer == "Lion":
+        from lion_pytorch import Lion
+        optimizer = Lion([{"params": model.gru.parameters(), "lr": 0.01},
+                                       {"params": model.linear1.parameters()},
+                                       {"params": model.linear2.parameters()},
+                                       {"params": model.linear3.parameters()}], lr=lr, weight_decay=0.01)
+        optimizer_sindy = Lion([{"params": model.e_sindy.parameters(), "lr": 0.01}], lr=lr, weight_decay=1)
+        optimizer_everything = Lion([{"params": model.gru.parameters()},
+                                                  {"params": model.linear1.parameters()},
+                                                  {"params": model.linear2.parameters()},
+                                                  {"params": model.linear3.parameters()},
+                                                  {"params": model.e_sindy.parameters()}], lr=lr, weight_decay=weight_decay)
     
     val_error_list = []
     patience_counter = 0
@@ -168,7 +235,7 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
             loss = criterion(outputs, data[1]) + criterion(h_gru, h_sindy) * sindy_regularization + torch.abs(torch.mean(h_gru)) * 0.1
             loss.backward()
             optimizer_everything.step()
-        print(epoch, ":", loss)
+        # print(epoch, ":", loss)
         if epoch % thres_epoch == 0 and epoch != 0:
             model.e_sindy.thresholding(threshold=threshold, base_threshold=base_threshold)
             model.eval()
@@ -178,8 +245,7 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
                 val_error = val_error / torch.linalg.norm(valid_dataset.Y)
                 val_error_list.append(val_error)
             if verbose:
-                print('Training epoch ' + str(epoch))
-                print('Error ' + str(val_error_list[-1]))
+                print('Training epoch ' + str(epoch) + ' - Error {:.6f}'.format(val_error_list[-1]), end="\r")
             if val_error == torch.min(torch.tensor(val_error_list)):
                 patience_counter = 0
             else:
