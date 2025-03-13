@@ -40,6 +40,14 @@ SINDy-SHRED achieves **state-of-the-art performance** in various applications, i
 - Matplotlib
 - scikit-learn
 
+## 🚀 Quick Start in Google Colab
+
+We strongly encourage you to explore **SINDy-SHRED** by directly running our [Colab notebook](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing). The colab notebook allows you to easily reproduce experiments, and understand the workflow without any setup:
+
+[![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
+
+✨ **Just plug and play!**
+
 ### 📂 Dataset
 Please download the dataset and place it into the `Data/` folder, as GitHub might mistakenly ignore large files.
 
