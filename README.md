@@ -46,7 +46,7 @@ We strongly encourage you to explore **SINDy-SHRED** by directly running our [Co
 
 [![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
 
-✨ **Just plug and play!**
+✨ **Just plug and play!** 🎸
 
 ### 📂 Dataset
 Please download the dataset and place it into the `Data/` folder, as GitHub might mistakenly ignore large files.
