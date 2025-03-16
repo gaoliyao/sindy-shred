@@ -4,7 +4,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)  
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)  
 [![YouTube](https://img.shields.io/badge/YouTube-Watch-red?logo=youtube)](https://www.youtube.com/watch?v=UYDfWJxvKGw)
-[![Open in Colab](https://img.shields.io/badge/Colab-Open-orange?logo=googlecolab)]([https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing))
+[![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
+[![GitHub](https://img.shields.io/badge/GitHub-sindy--shred-blue.svg)](https://github.com/gaoliyao/sindy-shred)
+
 
 
 ## 📌 Overview
