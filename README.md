@@ -90,16 +90,16 @@ SINDy-SHRED **outperforms state-of-the-art models** on real and synthetic datase
 <img width="1284" alt="Screen Shot 2025-01-24 at 6 11 38 AM" src="https://github.com/user-attachments/assets/ecb0bedc-ab58-46f5-81d5-51a2cc31e575" />
 
 ### 💨 Flow over a Cylinder Example
-<img width="893" alt="Screenshot 2025-04-01 at 2 52 27 AM" src="https://github.com/user-attachments/assets/f719b85e-c0cf-4f95-a195-fb331e3819b2" />
+<img width="1284" alt="Screenshot 2025-04-01 at 2 52 27 AM" src="https://github.com/user-attachments/assets/f719b85e-c0cf-4f95-a195-fb331e3819b2" />
 
 ### 🌪 Isotropic Turbulent Flow Example
-<img width="549" alt="Screenshot 2025-04-01 at 2 57 15 AM" src="https://github.com/user-attachments/assets/c745884b-99c0-40e7-821a-86f4ebd0d34a" />
+<img width="1284" alt="Screenshot 2025-04-01 at 2 57 15 AM" src="https://github.com/user-attachments/assets/c745884b-99c0-40e7-821a-86f4ebd0d34a" />
 
 ### 📽 Pendulum Video Prediction Example
-<img width="871" alt="Screen Shot 2025-01-24 at 6 12 36 AM" src="https://github.com/user-attachments/assets/65e4260d-2723-4de1-ae9c-d95212cad939" />
+<img width="1284" alt="Screen Shot 2025-01-24 at 6 12 36 AM" src="https://github.com/user-attachments/assets/65e4260d-2723-4de1-ae9c-d95212cad939" />
 
 ### 📉 Visualizing the Loss Landscape
-<img width="996" alt="Screenshot 2025-04-01 at 2 57 59 AM" src="https://github.com/user-attachments/assets/0d81d984-4f0a-4144-b87b-c94b7d969a67" />
+<img width="1284" alt="Screenshot 2025-04-01 at 2 57 59 AM" src="https://github.com/user-attachments/assets/0d81d984-4f0a-4144-b87b-c94b7d969a67" />
 
 
 
