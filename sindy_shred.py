@@ -3,6 +3,18 @@ from torch.utils.data import DataLoader
 import numpy as np
 from sindy import sindy_library_torch, e_sindy_library_torch
 
+
+def get_device():
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    elif torch.cuda.is_available():
+        return torch.device("cuda")
+    else:
+        return torch.device("cpu")
+
+
+device = get_device()
+
 class SINDy(torch.nn.Module):
     def __init__(self, latent_dim, library_dim, poly_order, include_sine):
         super().__init__()
@@ -10,9 +22,12 @@ class SINDy(torch.nn.Module):
         self.poly_order = poly_order
         self.include_sine = include_sine
         self.library_dim = library_dim
-        self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True)
+        self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True, device=device)
+        # self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True)
         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
+        self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False, device=device)
+        # self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
+
         self.coefficients = torch.nn.Parameter(self.coefficients)
 
     def forward(self, h, dt):
@@ -26,11 +41,13 @@ class SINDy(torch.nn.Module):
         
     def add_noise(self, noise=0.1):
         self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
-        
+        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False, device=device)
+        # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+
     def recenter(self):
         self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False, device=device)
+        # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
 
 class E_SINDy(torch.nn.Module):
     def __init__(self, num_replicates, latent_dim, library_dim, poly_order, include_sine):
@@ -42,7 +59,8 @@ class E_SINDy(torch.nn.Module):
         self.library_dim = library_dim
         self.coefficients = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=True)
         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).cuda()
+        self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False, device=device)
+        # self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).cuda()
         self.coefficients = torch.nn.Parameter(self.coefficients)
 
     def forward(self, h_replicates, dt):
@@ -63,19 +81,24 @@ class E_SINDy(torch.nn.Module):
         
     def add_noise(self, noise=0.1):
         self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False, device=device)
+        # self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()   
         
     def recenter(self):
         self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()  
+        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False, device=device)
+        # self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()  
 
 class SINDy_SHRED(torch.nn.Module):
     def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, layer_norm=False):
         super(SINDy_SHRED, self).__init__()
+        # self.gru = torch.nn.GRU(input_size=input_size, hidden_size=hidden_size,
+        #                                 num_layers=hidden_layers, batch_first=True).cuda()
         self.gru = torch.nn.GRU(input_size=input_size, hidden_size=hidden_size,
-                                        num_layers=hidden_layers, batch_first=True).cuda()
+                                num_layers=hidden_layers, batch_first=True).to(device)
         self.num_replicates = 10
-        self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine).cuda()
+        self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine).to(device)
+        # self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine).cuda()
         
         self.linear1 = torch.nn.Linear(hidden_size, l1)
         self.linear2 = torch.nn.Linear(l1, l2)
@@ -90,10 +113,8 @@ class SINDy_SHRED(torch.nn.Module):
         self.layer_norm_gru = torch.nn.LayerNorm(hidden_size)
 
     def forward(self, x, sindy=False):
-        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float)
-        if next(self.parameters()).is_cuda:
-            h_0 = h_0.cuda()
-        
+        x = x.to(device)
+        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float, device=device)
         _, h_out = self.gru(x, h_0)
         h_out = h_out[-1].view(-1, self.hidden_size)
         if self.use_layer_norm:
@@ -117,12 +138,45 @@ class SINDy_SHRED(torch.nn.Module):
                 h_out_replicates = h_out[1:, :].unsqueeze(1).repeat(1, self.num_replicates, 1)
                 output = output, h_out_replicates, ht_replicates
         return output
+        
+#     def forward(self, x, sindy=False):
+#         h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float)
+#         if next(self.parameters()).is_cuda:
+#             h_0 = h_0.cuda()
+        
+#         _, h_out = self.gru(x, h_0)
+#         h_out = h_out[-1].view(-1, self.hidden_size)
+#         if self.use_layer_norm:
+#             h_out = self.layer_norm_gru(h_out)
+
+#         output = self.linear1(h_out)
+#         output = self.dropout(output)
+#         output = torch.nn.functional.relu(output)
+
+#         output = self.linear2(output)
+#         output = self.dropout(output)
+#         output = torch.nn.functional.relu(output)
+    
+#         output = self.linear3(output)
+#         with torch.autograd.set_detect_anomaly(True):
+#             if sindy:
+#                 h_t = h_out[:-1, :]
+#                 ht_replicates = h_t.unsqueeze(1).repeat(1, self.num_replicates, 1)
+#                 for _ in range(10):
+#                     ht_replicates = self.e_sindy(ht_replicates, dt=self.dt)
+#                 h_out_replicates = h_out[1:, :].unsqueeze(1).repeat(1, self.num_replicates, 1)
+#                 output = output, h_out_replicates, ht_replicates
+#         return output
     
     def gru_outputs(self, x, sindy=False):
-        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float)
-        if next(self.parameters()).is_cuda:
-            h_0 = h_0.cuda()
+        x = x.to(device)
+        # h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float)
+        h_0 = torch.zeros((self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float, device=device)
+
         _, h_out = self.gru(x, h_0)
+        # if next(self.parameters()).is_cuda:
+        #     h_0 = h_0.cuda()
+        # _, h_out = self.gru(x, h_0)
         h_out = h_out[-1].view(-1, self.hidden_size)
         if self.use_layer_norm:
             h_out = self.layer_norm_gru(h_out)
@@ -199,7 +253,7 @@ def forecast(forecaster, reconstructor, test_dataset):
         temp = initial_in.clone()
         initial_in[0, :-1] = temp[0, 1:]
         initial_in[0, -1] = torch.tensor(np.concatenate([scaled_output1, scaled_output2]))
-    device = 'cuda' if next(reconstructor.parameters()).is_cuda else 'cpu'
+    # device = 'cuda' if next(reconstructor.parameters()).is_cuda else 'cpu'
     forecasted_vals = torch.tensor(np.array(vals), dtype=torch.float32).to(device)
     reconstructions = []
     for i in range(len(forecasted_vals) - test_dataset.X.shape[1]):
