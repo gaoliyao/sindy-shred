@@ -3,46 +3,18 @@ from torch.utils.data import DataLoader
 import numpy as np
 from sindy import sindy_library_torch, e_sindy_library_torch
 
-class SINDy(torch.nn.Module):
-    def __init__(self, latent_dim, library_dim, poly_order, include_sine):
-        super().__init__()
-        self.latent_dim = latent_dim
-        self.poly_order = poly_order
-        self.include_sine = include_sine
-        self.library_dim = library_dim
-        self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True)
-        torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
-        self.coefficients = torch.nn.Parameter(self.coefficients)
-
-    def forward(self, h, dt):
-        library_Theta = sindy_library_torch(h, self.latent_dim, self.poly_order, self.include_sine)
-        h = h + library_Theta @ (self.coefficients * self.coefficient_mask) * dt
-        return h
-    
-    def thresholding(self, threshold):
-        self.coefficient_mask = torch.abs(self.coefficients) > threshold
-        self.coefficients.data = self.coefficient_mask * self.coefficients.data
-        
-    def add_noise(self, noise=0.1):
-        self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
-        
-    def recenter(self):
-        self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()   
-
 class E_SINDy(torch.nn.Module):
-    def __init__(self, num_replicates, latent_dim, library_dim, poly_order, include_sine):
+    def __init__(self, num_replicates, latent_dim, library_dim, poly_order, include_sine, device='cpu'):
         super().__init__()
         self.num_replicates = num_replicates
         self.latent_dim = latent_dim
         self.poly_order = poly_order
         self.include_sine = include_sine
         self.library_dim = library_dim
+        self.device = device
         self.coefficients = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=True)
         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).cuda()
+        self.coefficient_mask = torch.ones(num_replicates, library_dim, latent_dim, requires_grad=False).to(self.device)
         self.coefficients = torch.nn.Parameter(self.coefficients)
 
     def forward(self, h_replicates, dt):
@@ -63,19 +35,19 @@ class E_SINDy(torch.nn.Module):
         
     def add_noise(self, noise=0.1):
         self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()   
+        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).to(self.device)
         
     def recenter(self):
         self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).cuda()  
+        self.coefficient_mask = torch.ones(self.num_replicates, self.library_dim, self.latent_dim, requires_grad=False).to(self.device)
 
 class SINDy_SHRED(torch.nn.Module):
-    def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, layer_norm=False):
+    def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, layer_norm=False, device='cpu'):
         super(SINDy_SHRED, self).__init__()
         self.gru = torch.nn.GRU(input_size=input_size, hidden_size=hidden_size,
-                                        num_layers=hidden_layers, batch_first=True).cuda()
+                                        num_layers=hidden_layers, batch_first=True).to(device)
         self.num_replicates = 10
-        self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine).cuda()
+        self.e_sindy = E_SINDy(self.num_replicates, hidden_size, library_dim, poly_order, include_sine, device=device)
         
         self.linear1 = torch.nn.Linear(hidden_size, l1)
         self.linear2 = torch.nn.Linear(l1, l2)
