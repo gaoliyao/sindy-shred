@@ -73,8 +73,7 @@ def e_sindy_library_torch(z, latent_dim, poly_order, include_sine=False):
         number of library functions. The number of library functions is determined by the number
         of state variables of the input, the polynomial order, and whether or not sines are included.
     """
-    use_cuda = torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
+    device = z.device
 
     library = [torch.ones(z.shape[0]).to(device)]
 
