@@ -100,7 +100,6 @@ class SINDy_SHRED(torch.nn.Module):
             
 
 def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=1.0, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
-    train_loader = DataLoader(train_dataset, shuffle=False, batch_size=batch_size)
     criterion = torch.nn.MSELoss()
     if optimizer == "AdamW":
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
@@ -109,6 +108,8 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
     patience_counter = 0
     best_params = model.state_dict()
     for epoch in range(1, num_epochs + 1):
+        current_bs = int(np.random.randint(batch_size//2, batch_size+1))
+        train_loader = DataLoader(train_dataset, shuffle=False, batch_size=current_bs)
         for data in train_loader:
             model.train()
             outputs, h_gru, h_sindy = model(data[0], sindy=True)
