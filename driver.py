@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import sindy
 import pysindy as ps
@@ -41,7 +43,7 @@ class sindy_shred_driver:
         lr=1e-3,
         verbose=True,
         threshold=0.25,  # Really large = SINDy won't activate, then it becomes SHRED
-        patience=5,
+        patience=None,
         sindy_regularization=10.0,  # Set to 0 also becomes SHRED (Better than
         # threshold)
         optimizer="AdamW",
@@ -308,16 +310,18 @@ class sindy_shred_driver:
         if self._train_data is None:
             raise ValueError("You need to call `fit` prior to recovering SINDy states.")
 
-        gru_outs, sindy_outs = self._shred.gru_outputs(self._train_data.X, sindy=True)
-        # What is this indexing doing?
-        gru_outs = gru_outs[:, 0, :]
+        # gru_outs, sindy_outs = self._shred.gru_outputs(self._train_data.X, sindy=True)
+        # # What is this indexing doing?
+        # gru_outs = gru_outs[:, 0, :]
+        #
+        # # Normalization
+        # for n in range(self._latent_dim):
+        #     gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_outs[:, n])) / (
+        #         torch.max(gru_outs[:, n]) - torch.min(gru_outs[:, n])
+        #     )
+        # gru_outs = 2 * gru_outs - 1
 
-        # Normalization
-        for n in range(self._latent_dim):
-            gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_outs[:, n])) / (
-                torch.max(gru_outs[:, n]) - torch.min(gru_outs[:, n])
-            )
-        gru_outs = 2 * gru_outs - 1
+        gru_outs = self.gru_normalize(data_type="train")
 
         # SINDy discovery
         x = gru_outs.detach().cpu().numpy()
@@ -327,6 +331,7 @@ class sindy_shred_driver:
             differentiation_method=self._differentiation_method,
             feature_library=ps.PolynomialLibrary(degree=self._poly_order),
         )
+
         model.fit(x, t=self._dt, ensemble=True)
         self._model = model
 
@@ -375,3 +380,31 @@ class sindy_shred_driver:
         init_cond = np.zeros(self._latent_dim)
         init_cond[: self._latent_dim] = x[0, :]
         self._x_sim = model.simulate(init_cond, t_train)
+
+    def gru_normalize(self, data_type=None):
+        """Get grus and normalize them by the training data"""
+
+        if data_type is None:
+            data_type = "train"
+
+        gru_out_train, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
+        # What is this indexing doing?
+        gru_out_train = gru_out_train[:, 0, :]
+
+        if data_type == "train":
+            gru_outs, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
+        elif data_type == "validate":
+            gru_outs, _ = self._shred.gru_outputs(self._valid_data.X, sindy=True)
+        elif data_type == "test":
+            gru_outs, _ = self._shred.gru_outputs(self._test_data.X, sindy=True)
+        gru_outs = gru_outs[:, 0, :]
+
+        # Normalization
+        for n in range(self._latent_dim):
+            gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_out_train[:, n])) / (
+                torch.max(gru_out_train[:, n]) - torch.min(gru_out_train[:, n])
+            )
+        gru_outs = 2 * gru_outs - 1
+        return gru_outs
+
+    # def normalize(self, data):
