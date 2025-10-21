@@ -11,8 +11,9 @@ import matplotlib.pyplot as plt
 
 
 class TimeSeriesDataset(torch.utils.data.Dataset):
-    """Takes input sequence of sensor measurements with shape (batch size, lags, num_sensors)
-    and corresponding measurments of high-dimensional state, return Torch dataset"""
+    """Takes input sequence of sensor measurements with shape (batch size, lags,
+    num_sensors) and corresponding measurments of high-dimensional state,
+    return Torch dataset"""
 
     def __init__(self, X, Y):
         self.X = X
@@ -283,7 +284,7 @@ class sindy_shred_driver:
             test_length=self._test_length,
             mode=self._sample_mode,
         )
-        # and then by scaling the data
+        # and then scale the data
         self._scale_data(x_to_fit)
 
         shred = sindy_shred.SINDy_SHRED(
@@ -302,6 +303,10 @@ class sindy_shred_driver:
     def sindy_identify(
         self, threshold, differentiation_method="finite", plot_result=True
     ):
+        """Post-hoc model discovery with SINDy using SHRED latent space trajectories."""
+
+        # TODO: allow users to pass any differentiation method
+        #   and implement MIOSR option
         if differentiation_method == "finite":
             self._differentiation_method = ps.differentiation.FiniteDifference()
         elif differentiation_method == "smoothed finite":
@@ -310,22 +315,12 @@ class sindy_shred_driver:
         if self._train_data is None:
             raise ValueError("You need to call `fit` prior to recovering SINDy states.")
 
-        # gru_outs, sindy_outs = self._shred.gru_outputs(self._train_data.X, sindy=True)
-        # # What is this indexing doing?
-        # gru_outs = gru_outs[:, 0, :]
-        #
-        # # Normalization
-        # for n in range(self._latent_dim):
-        #     gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_outs[:, n])) / (
-        #         torch.max(gru_outs[:, n]) - torch.min(gru_outs[:, n])
-        #     )
-        # gru_outs = 2 * gru_outs - 1
-
+        # Normalized SINDy-SHRED latent space trajectories for post-hoc model discovery
         gru_outs = self.gru_normalize(data_type="train")
-
-        # SINDy discovery
         x = gru_outs.detach().cpu().numpy()
         self._gru_outs = x
+
+        # SINDy discovery
         model = ps.SINDy(
             optimizer=ps.STLSQ(threshold=threshold, alpha=0.05),
             differentiation_method=self._differentiation_method,
@@ -407,4 +402,49 @@ class sindy_shred_driver:
         gru_outs = 2 * gru_outs - 1
         return gru_outs
 
-    # def normalize(self, data):
+    def shred_decode(self, z):
+        """Convert SINDy simulated latent space into scaled physical space using SHRED
+
+        A SINDy-SHRED model needs to have been fit first.
+
+        :param z: Latent space trajectories (i.e. from SINDy model)
+        :type z: numpy.ndarray or torch.tensor
+        :return: Physical, high-dimensional signal in min-max scaled space.
+        :rtype: numpy.ndarray
+        """
+        # Ensure latent space trajectories are a numpy array if needed
+        z = np.array(z)
+
+        # Convert scaling from [-1, 1] to [0, 1]
+        z = (z + 1) / 2
+
+        # Perform the Min-Max reverse transformation using the training SINDy-SHRED
+        # latent space
+        gru_out_train, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
+        gru_out_train = gru_out_train[:, 0, :]
+        gru_out_train = gru_out_train.detach().cpu().numpy()
+        # Each latent space dimension is normalized by itself.
+        for n in range(self._latent_dim):
+            z[:, n] = z[:, n] * (
+                np.max(gru_out_train[:, n]) - np.min(gru_out_train[:, n])
+            ) + np.min(gru_out_train[:, n])
+
+        # Perform the decoder reconstruction using the transformed SINDy-simulated data
+        latent_pred_sindy = torch.FloatTensor(z).to(
+            self._device
+        )  # Convert to torch tensor for reconstruction
+
+        # Pass the SINDy-simulated latent space data through the decoder
+        decoder_model = self._shred
+        output_sindy = decoder_model.linear1(latent_pred_sindy)
+        output_sindy = decoder_model.dropout(output_sindy)
+        output_sindy = torch.nn.functional.relu(output_sindy)
+        output_sindy = decoder_model.linear2(output_sindy)
+        output_sindy = decoder_model.dropout(output_sindy)
+        output_sindy = torch.nn.functional.relu(output_sindy)
+        output_sindy = decoder_model.linear3(output_sindy)
+
+        # Detach and convert the reconstructed data back to numpy for visualization
+        output_sindy_np = output_sindy.detach().cpu().numpy()
+
+        return output_sindy_np
