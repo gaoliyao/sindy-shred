@@ -9,10 +9,14 @@ from sklearn.preprocessing import MinMaxScaler
 import random
 import matplotlib.pyplot as plt
 
+import warnings
+
+warnings.simplefilter("ignore", UserWarning)
+
 
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Takes input sequence of sensor measurements with shape (batch size, lags,
-    num_sensors) and corresponding measurments of high-dimensional state,
+    num_sensors) and corresponding measurements of high-dimensional state,
     return Torch dataset"""
 
     def __init__(self, X, Y):
@@ -28,6 +32,47 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 
 class sindy_shred_driver:
+    """The infrastructure for fitting and working with a SINDy-SHRED mdoel.
+
+    :param latent_dim:
+    :type latent_dim:
+    :param poly_order:
+    :type poly_order:
+    :param include_sine:
+    :type include_sine:
+    :param hidden_layers:
+    :type hidden_layers:
+    :param l1:
+    :type l1:
+    :param l2:
+    :type l2:
+    :param dropout:
+    :type dropout:
+    :param layer_norm:
+    :type layer_norm:
+    :param batch_size:
+    :type batch_size:
+    :param num_epochs:
+    :type num_epochs:
+    :param lr:
+    :type lr:
+    :param verbose:
+    :type verbose:
+    :param threshold:
+    :type threshold:
+    :param patience:
+    :type patience:
+    :param sindy_regularization:
+    :type sindy_regularization:
+    :param optimizer:
+    :type optimizer:
+    :param thres_epoch:
+    :type thres_epoch:
+    :param device:
+    :type device:
+    :param sample_mode:
+    :type sample_mode:
+    """
 
     def __init__(
         self,
@@ -122,6 +167,7 @@ class sindy_shred_driver:
         return np.linalg.norm(x_est - x_true) / np.linalg.norm(x_true)
 
     def _get_data_dims(self, x_to_fit):
+        """Assign the data size properties"""
         self._n_time_dim, self._n_space_dim = x_to_fit.shape
 
     def _generate_splits(
@@ -131,10 +177,22 @@ class sindy_shred_driver:
         lags,
         test_length=None,
         mode=None,
-        sample_size=None,
     ):
         """
-        Generates contiguous train, validate, and test splits
+        Generates train, validate, and test splits according to a specified strategy.
+
+        :param train_length: Length of the training data split
+        :type train_length: int
+        :param validate_length: Length of the validation data split
+        :type validate_length: int
+        :param lags: Length of the sensor trajectories
+        :type lags: int
+        :param test_length: Length of the test data split
+        :type test_length: int
+        :param mode: Only the forecast data split is implemented.
+        :type mode: str
+        :param sample_size: Unused (should be part of the reconstruct mode)
+        :type sample_size: int
         """
         if mode is None:
             mode = "forecast"
@@ -194,8 +252,11 @@ class sindy_shred_driver:
         self._test_ind = test_ind
 
     def _scale_data(self, x_to_fit):
-        """Preprocess the data for training and we generate input/output pairs for
-        the training, validation, and test sets."""
+        """Transform data and generate input/output pairs for each data split
+
+        :param x_to_fit: Data to be transformed.
+        :type x_to_fit: numpy.ndarray
+        """
         # Scaling
         sc = MinMaxScaler()
         train_ind = self._train_ind
@@ -260,6 +321,31 @@ class sindy_shred_driver:
         test_length=None,
         seed=0,
     ):
+        """Fit SINDy-SHRED to the given data.
+
+        Performs the data split behind the scenes according to the given strategy and
+        length of the data splits given by the user.
+
+        :param num_sensors: Number of sensor trajectories. Used to initialize arrays.
+        :type num_sensors: int
+        :param dt: Time step of the data
+        :type dt: float
+        :param x_to_fit: Data to fit with SINDy-SHRED.
+        :type x_to_fit: numpy.ndarray
+        :param lags: Length of trajectories for discovering latent space
+        :type lags: int
+        :param train_length: Length of the training data
+        :type train_length: int
+        :param validate_length: Length of the validation data (warning, might be
+        largely unused)
+        :type validate_length: int
+        :param sensor_locations: Locations of the data in the higher dimensional space
+        :type sensor_locations: int
+        :param test_length: Length of the test data. Only stored and transformed.
+        :type test_length: int
+        :param seed: Value for setting the random number seeds.
+        :type seed: int
+        """
 
         # Set seeds for reproducibility
         random.seed(seed)
@@ -303,7 +389,15 @@ class sindy_shred_driver:
     def sindy_identify(
         self, threshold, differentiation_method="finite", plot_result=True
     ):
-        """Post-hoc model discovery with SINDy using SHRED latent space trajectories."""
+        """Post-hoc model discovery with SINDy using SHRED latent space trajectories.
+
+        :param threshold: Sparsity threshold for SINDy
+        :type threshold: float
+        :param differentiation_method: Diff. method for SINDy.
+        :type differentiation_method: str
+        :param plot_result: Flag for plotting discovered model
+        :type plot_result: bool
+        """
 
         # TODO: allow users to pass any differentiation method
         #   and implement MIOSR option
@@ -334,23 +428,6 @@ class sindy_shred_driver:
             print("SINDy-derived dynamical equation:\n")
             model.print()
 
-        # # Plot the discovered SINDy model
-        # t_train = np.arange(0, len(x) * self._dt, self._dt)
-        # # t_train = time[train_indices]
-        # init_cond = np.zeros(self._latent_dim)
-        # init_cond[:self._latent_dim] = gru_outs[0, :].detach().cpu().numpy()
-        # x_sim = model.simulate(init_cond, t_train)
-        #
-        # if plot_result:
-        #     fig, ax = plt.subplots(self._latent_dim)
-        #     for i in range(self._latent_dim):
-        #         ax[i].plot(gru_outs[:, i].detach().cpu().numpy(), label="SINDy-SHRED")
-        #         ax[i].plot(x_sim[:, i], "k--", label="model")
-        #
-        #     plt.show()
-        #
-        # return x_sim
-
         # Plot the discovered SINDy model
         if plot_result:
             self.sindy_simulate(x)
@@ -369,15 +446,31 @@ class sindy_shred_driver:
             plt.show()
 
     def sindy_simulate(self, x):
+        """Integrate the SINDy model forward in time.
+
+        Assumes the period for integration is a time series of len(x) with time steps
+        given by `dt`. The initial value for the latent space is given as the first
+        latent space value from the SINDy-SHRED model.
+
+        :param x: SINDy-SHRED latent space (e.g., from `SINDy_SHRED.gru_outputs`)
+        :type x: numpy.ndarray
+        """
         model = self._model
         t_train = np.arange(0, len(x) * self._dt, self._dt)
-        # t_train = time[train_indices]
         init_cond = np.zeros(self._latent_dim)
         init_cond[: self._latent_dim] = x[0, :]
         self._x_sim = model.simulate(init_cond, t_train)
 
     def gru_normalize(self, data_type=None):
-        """Get grus and normalize them by the training data"""
+        """Get grus and normalize them by the training data.
+
+        :param data_type: Specifies which data split to return. All data splits are
+        normalized by the training data latent space to be on the scale [0, 1]. Must
+        be one of `train`, `validate`, or `test`.
+        :type data_type: str
+        :return gru_outs: Normalized latent space variables.
+        :rtype gru_outs: torch.tensor
+        """
 
         if data_type is None:
             data_type = "train"
@@ -392,6 +485,8 @@ class sindy_shred_driver:
             gru_outs, _ = self._shred.gru_outputs(self._valid_data.X, sindy=True)
         elif data_type == "test":
             gru_outs, _ = self._shred.gru_outputs(self._test_data.X, sindy=True)
+        else:
+            raise ValueError("Unrecognized `data_type` provided.")
         gru_outs = gru_outs[:, 0, :]
 
         # Normalization
