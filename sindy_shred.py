@@ -5,6 +5,7 @@ from sindy import sindy_library_torch, e_sindy_library_torch
 
 
 def get_device():
+    # Prioritize the mac backend if it is available.
     if torch.backends.mps.is_available():
         return torch.device("mps")
     elif torch.cuda.is_available():
@@ -18,7 +19,13 @@ device = get_device()
 
 class E_SINDy(torch.nn.Module):
     def __init__(
-        self, num_replicates, latent_dim, library_dim, poly_order, include_sine
+        self,
+        num_replicates,
+        latent_dim,
+        library_dim,
+        poly_order,
+        include_sine,
+        device=None,
     ):
         super().__init__()
         self.num_replicates = num_replicates
@@ -34,6 +41,11 @@ class E_SINDy(torch.nn.Module):
             num_replicates, library_dim, latent_dim, requires_grad=False, device=device
         )
         self.coefficients = torch.nn.Parameter(self.coefficients)
+
+        if device is None:
+            self.device = get_device()
+        else:
+            self.device = device
 
     def forward(self, h_replicates, dt):
         num_data, num_replicates, latent_dim = h_replicates.shape
@@ -80,15 +92,19 @@ class SINDy_SHRED(torch.nn.Module):
         poly_order=3,
         include_sine=False,
         dt=0.03,
-        device="cpu",
+        device=None,
     ):
+        if device is None:
+            device = get_device()
+        self.device = device
+
         super(SINDy_SHRED, self).__init__()
         self.gru = torch.nn.GRU(
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=hidden_layers,
             batch_first=True,
-        ).to(device)
+        ).to(self.device)
         self.num_replicates = 5
         self.num_euler_steps = 3
         self.e_sindy = E_SINDy(
@@ -97,7 +113,7 @@ class SINDy_SHRED(torch.nn.Module):
             library_dim,
             poly_order,
             include_sine,
-            device=device,
+            device=self.device,
         )
 
         self.linear1 = torch.nn.Linear(hidden_size, l1)
@@ -112,7 +128,9 @@ class SINDy_SHRED(torch.nn.Module):
 
     def forward(self, x, sindy=False):
         h_0 = torch.zeros(
-            (self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float
+            (self.hidden_layers, x.size(0), self.hidden_size),
+            dtype=torch.float,
+            device=self.device,
         )
         if next(self.parameters()).is_cuda:
             h_0 = h_0.cuda()
@@ -145,7 +163,9 @@ class SINDy_SHRED(torch.nn.Module):
 
     def gru_outputs(self, x, sindy=False):
         h_0 = torch.zeros(
-            (self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float
+            (self.hidden_layers, x.size(0), self.hidden_size),
+            dtype=torch.float,
+            device=self.device,
         )
         if next(self.parameters()).is_cuda:
             h_0 = h_0.cuda()
@@ -265,7 +285,7 @@ def forecast(forecaster, reconstructor, test_dataset):
         initial_in[0, -1] = torch.tensor(
             np.concatenate([scaled_output1, scaled_output2])
         )
-    # device = 'cuda' if next(reconstructor.parameters()).is_cuda else 'cpu'
+    # @ToDO: Need to make sure we are handling devices consistently throughout.
     forecasted_vals = torch.tensor(np.array(vals), dtype=torch.float32).to(device)
     reconstructions = []
     for i in range(len(forecasted_vals) - test_dataset.X.shape[1]):
