@@ -84,7 +84,8 @@ class sindy_shred_driver:
         l2=400,
         dropout=0.1,
         layer_norm=False,
-        batch_size=128,
+        batch_size=128,  # How many trajectory time steps to train on in a single
+        # gradient descent. The smaller it is, the more optimization steps it will take.
         num_epochs=200,
         lr=1e-3,
         verbose=True,
