@@ -48,12 +48,14 @@ class SHRED(torch.nn.Module):
         self.hidden_size = hidden_size
 
     def forward(self, x):
-
+        x = x.to(device)
         h_0 = torch.zeros(
-            (self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float
+            (self.hidden_layers, x.size(0), self.hidden_size),
+            dtype=torch.float,
+            device=device,
         )
-        if next(self.parameters()).is_cuda:
-            h_0 = h_0.cuda()
+        # if next(self.parameters()).is_cuda:
+        #     h_0 = h_0.cuda()
 
         _, h_out = self.gru(x, h_0)
         h_out = h_out[-1].view(-1, self.hidden_size)
@@ -71,16 +73,16 @@ class SHRED(torch.nn.Module):
         return output
 
     def gru_outputs(self, x):
-
+        x = x.to(device)
         h_0 = torch.zeros(
-            (self.hidden_layers, x.size(0), self.hidden_size), dtype=torch.float
+            (self.hidden_layers, x.size(0), self.hidden_size),
+            dtype=torch.float,
+            device=device,
         )
-        if next(self.parameters()).is_cuda:
-            h_0 = h_0.cuda()
+        # if next(self.parameters()).is_cuda:
+        #     h_0 = h_0.cuda()
 
         _, h_out = self.gru(x, h_0)
-        # print("h_out.shape")
-        # print(h_out.shape)
         h_out = h_out[-1].view(-1, self.hidden_size)
         return h_out
 
@@ -243,7 +245,7 @@ def forecast(forecaster, reconstructor, test_dataset):
         initial_in[0, :-1] = temp[0, 1:]
         initial_in[0, -1] = torch.tensor(scaled_output)
 
-    device = "cuda" if next(reconstructor.parameters()).is_cuda else "cpu"
+    # device = "cuda" if next(reconstructor.parameters()).is_cuda else "cpu"
     forecasted_vals = torch.tensor(np.array(vals), dtype=torch.float32).to(device)
     reconstructions = []
     for i in range(len(forecasted_vals) - test_dataset.X.shape[1]):
