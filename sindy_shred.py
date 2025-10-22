@@ -16,49 +16,49 @@ def get_device():
 device = get_device()
 
 
-class SINDy(torch.nn.Module):
-    def __init__(self, latent_dim, library_dim, poly_order, include_sine):
-        super().__init__()
-        self.latent_dim = latent_dim
-        self.poly_order = poly_order
-        self.include_sine = include_sine
-        self.library_dim = library_dim
-        self.coefficients = torch.ones(
-            library_dim, latent_dim, requires_grad=True, device=device
-        )
-        # self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True)
-        torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
-        self.coefficient_mask = torch.ones(
-            library_dim, latent_dim, requires_grad=False, device=device
-        )
-        # self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
-
-        self.coefficients = torch.nn.Parameter(self.coefficients)
-
-    def forward(self, h, dt):
-        library_Theta = sindy_library_torch(
-            h, self.latent_dim, self.poly_order, self.include_sine
-        )
-        h = h + library_Theta @ (self.coefficients * self.coefficient_mask) * dt
-        return h
-
-    def thresholding(self, threshold):
-        self.coefficient_mask = torch.abs(self.coefficients) > threshold
-        self.coefficients.data = self.coefficient_mask * self.coefficients.data
-
-    def add_noise(self, noise=0.1):
-        self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
-        self.coefficient_mask = torch.ones(
-            self.library_dim, self.latent_dim, requires_grad=False, device=device
-        )
-        # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()
-
-    def recenter(self):
-        self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
-        self.coefficient_mask = torch.ones(
-            self.library_dim, self.latent_dim, requires_grad=False, device=device
-        )
-        # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()
+# class SINDy(torch.nn.Module):
+#     def __init__(self, latent_dim, library_dim, poly_order, include_sine):
+#         super().__init__()
+#         self.latent_dim = latent_dim
+#         self.poly_order = poly_order
+#         self.include_sine = include_sine
+#         self.library_dim = library_dim
+#         self.coefficients = torch.ones(
+#             library_dim, latent_dim, requires_grad=True, device=device
+#         )
+#         # self.coefficients = torch.ones(library_dim, latent_dim, requires_grad=True)
+#         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
+#         self.coefficient_mask = torch.ones(
+#             library_dim, latent_dim, requires_grad=False, device=device
+#         )
+#         # self.coefficient_mask = torch.ones(library_dim, latent_dim, requires_grad=False).cuda()
+#
+#         self.coefficients = torch.nn.Parameter(self.coefficients)
+#
+#     def forward(self, h, dt):
+#         library_Theta = sindy_library_torch(
+#             h, self.latent_dim, self.poly_order, self.include_sine
+#         )
+#         h = h + library_Theta @ (self.coefficients * self.coefficient_mask) * dt
+#         return h
+#
+#     def thresholding(self, threshold):
+#         self.coefficient_mask = torch.abs(self.coefficients) > threshold
+#         self.coefficients.data = self.coefficient_mask * self.coefficients.data
+#
+#     def add_noise(self, noise=0.1):
+#         self.coefficients.data += torch.randn_like(self.coefficients.data) * noise
+#         self.coefficient_mask = torch.ones(
+#             self.library_dim, self.latent_dim, requires_grad=False, device=device
+#         )
+#         # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()
+#
+#     def recenter(self):
+#         self.coefficients.data = torch.randn_like(self.coefficients.data) * 0.0
+#         self.coefficient_mask = torch.ones(
+#             self.library_dim, self.latent_dim, requires_grad=False, device=device
+#         )
+#         # self.coefficient_mask = torch.ones(self.library_dim, self.latent_dim, requires_grad=False).cuda()
 
 
 class E_SINDy(torch.nn.Module):
@@ -265,6 +265,7 @@ class SINDy_SHRED(torch.nn.Module):
                 h_out[1:, :].unsqueeze(1).repeat(1, self.num_replicates, 1)
             )
             h_outs = h_out_replicates, ht_replicates
+        # h_outs is one shorter than test_data?
         return h_outs
 
     def sindys_threshold(self, threshold):
@@ -333,7 +334,9 @@ def fit(
             )
             loss.backward()
             optimizer_everything.step()
-        print(epoch, ":", loss)
+
+        if verbose:
+            print(epoch, ":", loss)
         if epoch % thres_epoch == 0 and epoch != 0:
             model.e_sindy.thresholding(
                 threshold=threshold, base_threshold=base_threshold
@@ -352,11 +355,23 @@ def fit(
             else:
                 patience_counter += 1
             if patience_counter == patience:
+                print("Exceeded patience, exiting early.")
                 return torch.tensor(val_error_list).cpu()
     return torch.tensor(val_error_list).detach().cpu().numpy()
 
 
 def forecast(forecaster, reconstructor, test_dataset):
+    """Unrolling the LSTM (as opposed to integrating ODE in time). Predicts the
+    sparse sensors first using the LSTM and then put the sparse sensors into SHRED to
+    predict the spatial map.
+
+    Needs another line of code to train on just the sparse sensors.
+
+    forecaster: just trying to predict the time series of the time sensors. Mars has
+    the code for training this component.
+    reconstructor: the typical trained SINDy-SHRED model object.
+
+    """
     initial_in = test_dataset.X[0:1].clone()
     vals = [
         initial_in[0, i, :].detach().cpu().clone().numpy()
