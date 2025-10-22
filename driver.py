@@ -1,5 +1,3 @@
-import copy
-
 import torch
 import sindy
 import pysindy as ps
@@ -32,7 +30,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 
 class sindy_shred_driver:
-    """The infrastructure for fitting and working with a SINDy-SHRED mdoel.
+    """The infrastructure for fitting and working with a SINDy-SHRED model.
 
     :param latent_dim:
     :type latent_dim:
@@ -48,8 +46,6 @@ class sindy_shred_driver:
     :type l2:
     :param dropout:
     :type dropout:
-    :param layer_norm:
-    :type layer_norm:
     :param batch_size:
     :type batch_size:
     :param num_epochs:
@@ -83,7 +79,6 @@ class sindy_shred_driver:
         l1=350,
         l2=400,
         dropout=0.1,
-        layer_norm=False,
         batch_size=128,  # How many trajectory time steps to train on in a single
         # gradient descent. The smaller it is, the more optimization steps it will take.
         num_epochs=200,
@@ -139,7 +134,6 @@ class sindy_shred_driver:
             "library_dim": self._library_dim,
             "poly_order": self._poly_order,
             "include_sine": include_sine,
-            "layer_norm": layer_norm,
         }
 
         self._fit_kwargs = {
