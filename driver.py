@@ -467,12 +467,24 @@ class sindy_shred_driver:
         :rtype gru_outs: torch.tensor
         """
 
+        # gru_out_train, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
+        # # What is this indexing doing?
+        # gru_out_train = gru_out_train[:, 0, :]
+
+        gru_out_train = self.get_gru(data_type="train")
+        gru_outs = self.get_gru(data_type=data_type)
+
+        # Normalization
+        for n in range(self._latent_dim):
+            gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_out_train[:, n])) / (
+                torch.max(gru_out_train[:, n]) - torch.min(gru_out_train[:, n])
+            )
+        gru_outs = 2 * gru_outs - 1
+        return gru_outs
+
+    def get_gru(self, data_type=None):
         if data_type is None:
             data_type = "train"
-
-        gru_out_train, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
-        # What is this indexing doing?
-        gru_out_train = gru_out_train[:, 0, :]
 
         if data_type == "train":
             gru_outs, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
@@ -484,12 +496,6 @@ class sindy_shred_driver:
             raise ValueError("Unrecognized `data_type` provided.")
         gru_outs = gru_outs[:, 0, :]
 
-        # Normalization
-        for n in range(self._latent_dim):
-            gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_out_train[:, n])) / (
-                torch.max(gru_out_train[:, n]) - torch.min(gru_out_train[:, n])
-            )
-        gru_outs = 2 * gru_outs - 1
         return gru_outs
 
     def shred_decode(self, z):
@@ -538,3 +544,12 @@ class sindy_shred_driver:
         output_sindy_np = output_sindy.detach().cpu().numpy()
 
         return output_sindy_np
+
+    # def sindy_predict(self):
+    #
+    #     gru_outs_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
+    #     gru_outs_train_np = self.gru_normalize(data_type="train").detach().cpu().numpy()
+    #
+    #     init_cond[: self._latent_dim] = gru_outs_train_np[-1, :]
+    #
+    #     self.sindy_simulate()
