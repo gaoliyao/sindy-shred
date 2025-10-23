@@ -94,6 +94,7 @@ class sindy_shred_driver:
         sample_mode=None,
     ):
 
+        self._x_predict = None
         self._x_sim = None
         self._model = None
         self._shred = None
@@ -456,6 +457,33 @@ class sindy_shred_driver:
         init_cond[: self._latent_dim] = x[0, :]
         self._x_sim = model.simulate(init_cond, t_train)
 
+    def sindy_predict(self, t=None, init_cond=None):
+        """Predict the latent space using the discovered SINDy model.
+
+        This function is distinct from sindy_simulate because it assumes the initial
+        condition is the last latent space value from the training data and
+        integrates forward through a time series of `t`.
+
+        """
+
+        if t is None:
+            # Predicts from the last training data point over the length of the test
+            # data.
+            dt = self._dt
+            t = np.arange(-dt, self._test_length * dt - dt, dt)
+
+        model = self._model
+
+        if init_cond is None:
+            # The intial condition is the last training latent space values.
+            init_cond = np.zeros(self._latent_dim)
+            gru_train_np = self.gru_normalize(data_type="train").detach().cpu().numpy()
+            init_cond[: self._latent_dim] = gru_train_np[-1, :]
+
+        x_predict = model.simulate(init_cond, t)
+
+        return x_predict
+
     def gru_normalize(self, data_type=None):
         """Get grus and normalize them by the training data.
 
@@ -544,12 +572,3 @@ class sindy_shred_driver:
         output_sindy_np = output_sindy.detach().cpu().numpy()
 
         return output_sindy_np
-
-    # def sindy_predict(self):
-    #
-    #     gru_outs_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
-    #     gru_outs_train_np = self.gru_normalize(data_type="train").detach().cpu().numpy()
-    #
-    #     init_cond[: self._latent_dim] = gru_outs_train_np[-1, :]
-    #
-    #     self.sindy_simulate()
