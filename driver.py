@@ -437,10 +437,11 @@ class sindy_shred_driver:
                 ax[i].plot(t_train, x_sim[:, i], "k--", label="identified model")
                 ax[i].set_ylabel(rf"$z_{{{i}}}$ (-)")
                 if i == self._latent_dim - 1:
-                    ax[i].set_xlabel("time (s)")
+                    ax[i].set_xlabel("time (n steps)")
                     ax[i].legend()
             plt.show()
 
+    # @ToDo: Integrate this function with sindy_predict, below.
     def sindy_simulate(self, x):
         """Integrate the SINDy model forward in time.
 
@@ -470,7 +471,7 @@ class sindy_shred_driver:
             # Predicts from the last training data point over the length of the test
             # data.
             dt = self._dt
-            t = np.arange(-dt, self._test_length * dt - dt, dt)
+            t = np.arange(0, self._test_length * dt, dt)
 
         model = self._model
 
