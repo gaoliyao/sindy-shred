@@ -5,3 +5,4 @@ __pycache__
 *.pdf
 *.png
 *.mat
+Data/SST_data.mat
