@@ -33,9 +33,9 @@ class E_SINDy(torch.nn.Module):
         self.coefficient_mask = torch.abs(self.coefficients) > threshold_tensor
         self.coefficients.data = self.coefficient_mask * self.coefficients.data
 
-class SINDy_SHRED(torch.nn.Module):
+class SINDy_SHRED_net(torch.nn.Module):
     def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, device='cpu'):
-        super(SINDy_SHRED, self).__init__()
+        super(SINDy_SHRED_net, self).__init__()
         self.gru = torch.nn.GRU(input_size=input_size, hidden_size=hidden_size,
                                         num_layers=hidden_layers, batch_first=True).to(device)
         self.num_replicates = 5

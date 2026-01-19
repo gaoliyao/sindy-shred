@@ -66,7 +66,7 @@ import sindy_shred
 library_dim = sindy_shred.library_size(latent_dim, poly_order, include_sine, True)
 
 # Initialize and train the SINDy-SHRED model
-shred = sindy_shred.SINDy_SHRED(
+shred = sindy_shred.SINDy_SHRED_net(
     num_sensors, m, hidden_size=3, hidden_layers=2, l1=350, l2=400, dropout=0.1, 
     library_dim=library_dim, poly_order=3, include_sine=False, dt=1/52.0*0.1, layer_norm=False
 )
