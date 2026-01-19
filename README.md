@@ -59,23 +59,80 @@ Please download the dataset and place it into the `Data/` folder, as GitHub migh
 ---
 
 ## 🚀 Usage
-### 1️⃣ Define Train a SINDy-SHRED model
+
+### 1️⃣ Train a SINDy-SHRED model (Recommended)
+
+The `SINDyShred` class provides a high-level interface that handles data preprocessing, training, and SINDy discovery:
+
 ```python
-import sindy_shred
+from sindy_shred import SINDyShred
 
-library_dim = sindy_shred.library_size(latent_dim, poly_order, include_sine, True)
-
-# Initialize and train the SINDy-SHRED model
-shred = sindy_shred.SINDy_SHRED_net(
-    num_sensors, m, hidden_size=3, hidden_layers=2, l1=350, l2=400, dropout=0.1, 
-    library_dim=library_dim, poly_order=3, include_sine=False, dt=1/52.0*0.1, layer_norm=False
+# Initialize the model
+model = SINDyShred(
+    latent_dim=3,
+    poly_order=1,
+    hidden_layers=2,
+    l1=350,
+    l2=400,
+    dropout=0.1,
+    batch_size=128,
+    num_epochs=200,
+    lr=1e-3,
+    threshold=0.05,
+    sindy_regularization=10.0,
 )
 
-validation_errors = sindy_shred.fit(
-    shred, train_dataset, valid_dataset, batch_size=128, num_epochs=600, lr=1e-3, verbose=True, 
-    threshold=0.25, patience=5, sindy_regularization=10.0, optimizer="Lion", thres_epoch=100
+# Fit to data (handles preprocessing automatically)
+model.fit(
+    num_sensors=num_sensors,
+    dt=1/52.0,
+    x_to_fit=load_X,
+    lags=52,
+    train_length=1000,
+    validate_length=30,
+    sensor_locations=sensor_locations,
+)
+
+# Discover governing equations
+model.sindy_identify(threshold=0.05, plot_result=True)
+
+# Make predictions
+x_predict = model.sindy_predict()
+output = model.shred_decode(x_predict)
+```
+
+### 2️⃣ Low-level API (Advanced)
+
+For more control, use the network class directly:
+
+```python
+from sindy_shred_net import SINDy_SHRED_net, fit
+import sindy
+
+library_dim = sindy.library_size(latent_dim, poly_order, include_sine, True)
+
+# Initialize the network
+shred = SINDy_SHRED_net(
+    num_sensors, m, hidden_size=3, hidden_layers=2, l1=350, l2=400, dropout=0.1,
+    library_dim=library_dim, poly_order=3, include_sine=False, dt=1/52.0
+)
+
+# Train with custom datasets
+validation_errors = fit(
+    shred, train_dataset, valid_dataset, batch_size=128, num_epochs=600, lr=1e-3,
+    verbose=True, threshold=0.25, patience=5, sindy_regularization=10.0, thres_epoch=100
 )
 ```
+
+## 📁 Module Structure
+
+| Module | Description |
+|--------|-------------|
+| `sindy_shred.py` | High-level `SINDyShred` driver class for end-to-end workflows |
+| `sindy_shred_net.py` | Core `SINDy_SHRED_net` neural network and training functions |
+| `sindy.py` | SINDy library functions for sparse dynamics identification |
+| `plotting.py` | Visualization utilities for latent space, reconstructions, and predictions |
+| `processdata.py` | Data loading and preprocessing utilities |
 
 ---
 
