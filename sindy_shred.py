@@ -33,13 +33,14 @@ class E_SINDy(torch.nn.Module):
         self.poly_order = poly_order
         self.include_sine = include_sine
         self.library_dim = library_dim
+        self.device = device
         self.coefficients = torch.ones(
             num_replicates, library_dim, latent_dim, requires_grad=True
         )
         torch.nn.init.normal_(self.coefficients, mean=0.0, std=0.001)
         self.coefficient_mask = torch.ones(
-            num_replicates, library_dim, latent_dim, requires_grad=False, device=device
-        )
+            num_replicates, library_dim, latent_dim, requires_grad=False
+        ).to(self.device)
         self.coefficients = torch.nn.Parameter(self.coefficients)
 
         if device is None:
@@ -93,6 +94,7 @@ class SINDy_SHRED(torch.nn.Module):
         include_sine=False,
         dt=0.03,
         device=None,
+        multi_step=None,
     ):
         if device is None:
             device = get_device()
@@ -125,6 +127,8 @@ class SINDy_SHRED(torch.nn.Module):
         self.hidden_layers = hidden_layers
         self.hidden_size = hidden_size
         self.dt = dt
+        self.multi_step = multi_step
+        self.max_multi_step = 10
 
     def forward(self, x, sindy=False):
         h_0 = torch.zeros(
@@ -149,16 +153,27 @@ class SINDy_SHRED(torch.nn.Module):
         output = self.linear3(output)
         with torch.autograd.set_detect_anomaly(True):
             if sindy:
-                h_t = h_out[:-1, :]
-                ht_replicates = h_t.unsqueeze(1).repeat(1, self.num_replicates, 1)
-                for _ in range(self.num_euler_steps):
+                steps = int(self.multi_step) if self.multi_step is not None else 1
+                steps = max(1, steps)
+                if steps > self.max_multi_step:
+                    raise ValueError(
+                        f"multi_step={steps} exceeds max_multi_step="
+                        f"{self.max_multi_step}"
+                    )
+                start_latents = h_out[:-steps, :]
+                target_latents = h_out[steps:, :]
+                ht_replicates = start_latents.unsqueeze(1).repeat(
+                    1, self.num_replicates, 1
+                )
+                total_substeps = self.num_euler_steps * steps
+                for _ in range(total_substeps):
                     ht_replicates = self.e_sindy(
                         ht_replicates, dt=self.dt / float(self.num_euler_steps)
                     )
-                h_out_replicates = (
-                    h_out[1:, :].unsqueeze(1).repeat(1, self.num_replicates, 1)
+                h_out_replicates = target_latents.unsqueeze(1).repeat(
+                    1, self.num_replicates, 1
                 )
-                output = output, h_out_replicates, ht_replicates
+                return output, h_out_replicates, ht_replicates
         return output
 
     def gru_outputs(self, x, sindy=False):
@@ -173,18 +188,22 @@ class SINDy_SHRED(torch.nn.Module):
         h_out = h_out[-1].view(-1, self.hidden_size)
 
         if sindy:
-            h_t = h_out[:-1, :]
-            ht_replicates = h_t.unsqueeze(1).repeat(1, self.num_replicates, 1)
+            # Always return 1-step pairs for external consumers to preserve expected
+            # length
+            if h_out.shape[0] <= 1:
+                return None, None
+            start_latents = h_out[:-1, :]
+            target_latents = h_out[1:, :]
+            ht_replicates = start_latents.unsqueeze(1).repeat(1, self.num_replicates, 1)
             for _ in range(self.num_euler_steps):
                 ht_replicates = self.e_sindy(
                     ht_replicates, dt=self.dt / float(self.num_euler_steps)
                 )
-            h_out_replicates = (
-                h_out[1:, :].unsqueeze(1).repeat(1, self.num_replicates, 1)
+            h_out_replicates = target_latents.unsqueeze(1).repeat(
+                1, self.num_replicates, 1
             )
-            h_outs = h_out_replicates, ht_replicates
-        # h_outs is one shorter than test_data?
-        return h_outs
+            return h_out_replicates, ht_replicates
+        return None
 
     def sindys_threshold(self, threshold):
         self.e_sindy.thresholding(threshold)
@@ -205,6 +224,8 @@ def fit(
     patience=20,
     thres_epoch=100,
     weight_decay=0.01,
+    multi_step=1,
+    grad_clip_norm=1000,
 ):
     criterion = torch.nn.MSELoss()
     if optimizer == "AdamW":
@@ -213,21 +234,34 @@ def fit(
     val_error_list = []
     patience_counter = 0
     best_params = model.state_dict()
+    # allow overriding model's multi_step per training run (default keeps old behavior)
+    train_loader = DataLoader(train_dataset, shuffle=False, batch_size=batch_size + 1)
     for epoch in range(1, num_epochs + 1):
         current_bs = int(np.random.randint(batch_size // 2, batch_size + 1))
-        train_loader = DataLoader(train_dataset, shuffle=False, batch_size=current_bs)
-        for data in train_loader:
+        for idx_batch, data in enumerate(train_loader):
+            data = data[:current_bs]
             model.train()
             outputs, h_gru, h_sindy = model(data[0], sindy=True)
+            if outputs is None:
+                print(f"skip this iter because outputs is None")
+                continue
             optimizer.zero_grad()
             loss = (
                 criterion(outputs, data[1])
                 + criterion(h_gru, h_sindy) * sindy_regularization
                 + torch.abs(torch.mean(h_gru)) * 0.1
             )
+            if not torch.isfinite(loss).all():
+                print("Non-finite loss encountered; skipping optimization step")
+                model.zero_grad(set_to_none=True)
+                continue
+
             loss.backward()
+            if grad_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             optimizer.step()
         print(epoch, ":", loss)
+
         if epoch % thres_epoch == 0 and epoch != 0:
             model.e_sindy.thresholding(
                 threshold=threshold, base_threshold=base_threshold
@@ -246,23 +280,14 @@ def fit(
             else:
                 patience_counter += 1
             if patience_counter == patience:
-                print("Exceeded patience, exiting early.")
                 return torch.tensor(val_error_list).cpu()
     return torch.tensor(val_error_list).detach().cpu().numpy()
 
 
+# Do we keep this function? It may not have a use in SINDy-SHRED since comes from
+# SHRED's predictive unrolling of the LSTM rather than integrating the
+# SINDy-identified dynamics forward.
 def forecast(forecaster, reconstructor, test_dataset):
-    """Unrolling the LSTM (as opposed to integrating ODE in time). Predicts the
-    sparse sensors first using the LSTM and then put the sparse sensors into SHRED to
-    predict the spatial map.
-
-    Needs another line of code to train on just the sparse sensors.
-
-    forecaster: just trying to predict the time series of the time sensors. Mars has
-    the code for training this component.
-    reconstructor: the typical trained SINDy-SHRED model object.
-
-    """
     initial_in = test_dataset.X[0:1].clone()
     vals = [
         initial_in[0, i, :].detach().cpu().clone().numpy()
