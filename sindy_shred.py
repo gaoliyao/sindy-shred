@@ -192,14 +192,10 @@ class SINDyShred:
         """
         if mode is None:
             mode = "forecast"
-        # if sample_size is None:
-        #     sample_size = int(self._n_time_dim * 0.6)
-        # else:
-        #     sample_size = self._train_length
 
         if mode == "forecast":
             if test_length is None:
-                test_length = self._n_time_dim - (train_length + validate_length)
+                test_length = self._n_time_dim - (train_length + validate_length + lags)
 
             train_ind = np.arange(0, train_length)
 
@@ -459,7 +455,7 @@ class SINDyShred:
         init_cond[: self._latent_dim] = x[0, :]
         self._x_sim = model.simulate(init_cond, t_train)
 
-    def sindy_predict(self, t=None, init_cond=None, init_from="test"):
+    def sindy_predict(self, t=None, init_cond=None, init_from="train"):
         """Predict the latent space using the discovered SINDy model.
 
         This function integrates the discovered SINDy model forward in time starting
@@ -489,12 +485,17 @@ class SINDyShred:
         if init_cond is None:
             init_cond = np.zeros(self._latent_dim)
             if init_from == "test":
-                # Use first test point's latent state (matches original notebook behavior)
-                gru_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
+                # Use first test point's latent state. This approach technically
+                # leaks information from the test split and is not recommended.
+                gru_test_np = (
+                    self.gru_normalize(data_type="test").detach().cpu().numpy()
+                )
                 init_cond[: self._latent_dim] = gru_test_np[0, :]
             elif init_from == "train":
                 # Use last training point's latent state (for forecasting)
-                gru_train_np = self.gru_normalize(data_type="train").detach().cpu().numpy()
+                gru_train_np = (
+                    self.gru_normalize(data_type="train").detach().cpu().numpy()
+                )
                 init_cond[: self._latent_dim] = gru_train_np[-1, :]
             else:
                 raise ValueError(
