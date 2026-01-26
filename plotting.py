@@ -187,10 +187,10 @@ def plot_reconstruction_comparison(
 def plot_sensor_predictions(
     real_data,
     predicted_data,
-    sensor_locations,
-    sensor_indices,
-    num_train=52,
-    num_pred=250,
+    sensor_locations=None,
+    sensor_indices=None,
+    num_context=0,
+    num_pred=None,
     rows=4,
     cols=4,
     figsize=None,
@@ -203,15 +203,16 @@ def plot_sensor_predictions(
     real_data : array-like
         Real sensor data (n_samples, n_features).
     predicted_data : array-like
-        Predicted sensor data.
-    sensor_locations : array-like
-        Array of sensor location indices.
-    sensor_indices : list
-        Indices into sensor_locations to plot.
-    num_train : int, optional
-        Number of training samples (for vertical line). Default is 52.
+        Predicted sensor data, same shape as real_data.
+    sensor_locations : array-like, optional
+        Array of feature column indices to plot. If None, uses first rows*cols columns.
+    sensor_indices : list, optional
+        Indices into sensor_locations to plot. If None, uses range(len(sensor_locations)).
+    num_context : int, optional
+        Number of context samples before prediction starts (for vertical line).
+        Set to 0 to compare aligned arrays with no context. Default is 0.
     num_pred : int, optional
-        Number of prediction samples. Default is 250.
+        Number of prediction samples. If None, uses len(predicted_data) - num_context.
     rows : int, optional
         Number of rows in grid. Default is 4.
     cols : int, optional
@@ -226,6 +227,20 @@ def plot_sensor_predictions(
     fig : matplotlib.figure.Figure
     axes : array of matplotlib.axes.Axes
     """
+    n_features = real_data.shape[1]
+
+    # Default sensor_locations to first N columns
+    if sensor_locations is None:
+        sensor_locations = np.arange(min(rows * cols, n_features))
+
+    # Default sensor_indices to all locations
+    if sensor_indices is None:
+        sensor_indices = list(range(len(sensor_locations)))
+
+    # Default num_pred to remaining samples after context
+    if num_pred is None:
+        num_pred = len(predicted_data) - num_context
+
     if figsize is None:
         figsize = (3 * cols, 2 * rows)
 
@@ -239,24 +254,27 @@ def plot_sensor_predictions(
 
         sensor = sensor_locations[sensor_idx]
 
-        # Real data for training + prediction period
-        sensor_real = real_data[: num_train + num_pred, sensor]
+        # Real data for context + prediction period
+        sensor_real = real_data[: num_context + num_pred, sensor]
 
-        # Prediction data
-        sensor_pred = predicted_data[num_train : num_train + num_pred, sensor]
+        # Prediction data (starts after context)
+        sensor_pred = predicted_data[num_context : num_context + num_pred, sensor]
 
         axes[i].plot(
-            np.arange(num_train + num_pred), sensor_real, color="blue", linewidth=2
+            np.arange(num_context + num_pred), sensor_real, color="blue", linewidth=2
         )
         axes[i].plot(
-            np.arange(num_train, num_train + num_pred),
+            np.arange(num_context, num_context + num_pred),
             sensor_pred,
             color="red",
             linestyle="--",
             linewidth=2,
         )
         axes[i].set_title(f"Sensor {sensor_idx}", fontsize=10)
-        axes[i].axvline(x=num_train, color="gray", linestyle=":", linewidth=1)
+
+        # Only draw vertical line if there's context
+        if num_context > 0:
+            axes[i].axvline(x=num_context, color="gray", linestyle=":", linewidth=1)
 
     # Remove unused subplots
     for i in range(num_sensors, rows * cols):
@@ -276,7 +294,7 @@ def plot_sensor_predictions(
     fig.tight_layout()
 
     if save_path:
-        fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=300)
+        fig.savefig(save_path, bbox_inches="tight", dpi=300)
 
     return fig, axes
 

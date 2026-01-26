@@ -12,3 +12,5 @@ results/**/*.png
 results/**/*.txt
 !results/**/.gitkeep
 results/**
+archive/**
+devs/**
