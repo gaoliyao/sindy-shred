@@ -1,21 +1,14 @@
-import torch
+"""Data processing utilities for SINDy-SHRED."""
+
 from scipy.io import loadmat
 import numpy as np
 import scipy.linalg
 
-class TimeSeriesDataset(torch.utils.data.Dataset):
-    '''Takes input sequence of sensor measurements with shape (batch size, lags, num_sensors)
-    and corresponding measurments of high-dimensional state, return Torch dataset'''
-    def __init__(self, X, Y):
-        self.X = X
-        self.Y = Y
-        self.len = X.shape[0]
-        
-    def __getitem__(self, index):
-        return self.X[index], self.Y[index]
-    
-    def __len__(self):
-        return self.len
+# Re-export TimeSeriesDataset for backward compatibility
+from utils import TimeSeriesDataset
+
+__all__ = ['TimeSeriesDataset', 'load_data', 'qr_place']
+
 
 def load_data(name):
     '''Takes string denoting data name and returns the corresponding (N x m) array 

@@ -346,3 +346,156 @@ def plot_training_loss(validation_errors, figsize=(8, 4)):
     ax.grid(True, alpha=0.3)
 
     return fig, ax
+
+
+def plot_timeseries_comparison(
+    real_data,
+    predicted_data,
+    timesteps,
+    figsize=None,
+):
+    """Plot comparison between real and predicted 1D time series data.
+
+    Parameters
+    ----------
+    real_data : array-like
+        Ground truth data (n_samples, n_features).
+    predicted_data : array-like
+        Predicted/reconstructed data.
+    timesteps : list
+        List of timestep indices to visualize.
+    figsize : tuple, optional
+        Figure size.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : array of matplotlib.axes.Axes
+    """
+    num_plots = len(timesteps)
+    n_features = real_data.shape[1]
+
+    if figsize is None:
+        figsize = (4 * num_plots, 4)
+
+    fig, axes = plt.subplots(2, num_plots, figsize=figsize, sharex=True, sharey=True)
+    if num_plots == 1:
+        axes = axes.reshape(-1, 1)
+
+    for i, t in enumerate(timesteps):
+        # Real data
+        axes[0, i].bar(range(n_features), real_data[t, :], color="steelblue", alpha=0.7)
+        axes[0, i].set_title(f"Real (t={t})")
+        if i == 0:
+            axes[0, i].set_ylabel("Value")
+
+        # Predicted data
+        axes[1, i].bar(range(n_features), predicted_data[t, :], color="coral", alpha=0.7)
+        axes[1, i].set_title(f"Predicted (t={t})")
+        axes[1, i].set_xlabel("Feature")
+        if i == 0:
+            axes[1, i].set_ylabel("Value")
+
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_spatiotemporal_1d(
+    data,
+    time=None,
+    space=None,
+    title=None,
+    figsize=(10, 4),
+    **kwargs
+):
+    """Plot 1D spatio-temporal data as a heatmap.
+
+    Useful for visualizing toy data systems where the spatial dimension
+    is 1D (e.g., mixed oscillator systems).
+
+    Parameters
+    ----------
+    data : array-like
+        2D data array, shape (n_time, n_space) or (n_space, n_time).
+    time : array-like, optional
+        Time coordinates for x-axis.
+    space : array-like, optional
+        Space coordinates for y-axis.
+    title : str, optional
+        Plot title.
+    figsize : tuple, optional
+        Figure size. Default is (10, 4).
+    **kwargs
+        Additional arguments passed to pcolormesh.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Handle data orientation (expect space x time for pcolormesh)
+    if data.shape[0] > data.shape[1]:
+        # Assume time x space, transpose
+        data = data.T
+
+    if time is None:
+        time = np.arange(data.shape[1])
+    if space is None:
+        space = np.arange(data.shape[0])
+
+    default_kwargs = {
+        "cmap": "RdBu_r",
+        "rasterized": True,
+        "vmin": -3,
+        "vmax": 3,
+    }
+    default_kwargs.update(kwargs)
+
+    mesh = ax.pcolormesh(time, space, data, **default_kwargs)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Space")
+    if title:
+        ax.set_title(title)
+
+    fig.colorbar(mesh, ax=ax)
+    fig.tight_layout()
+
+    return fig, ax
+
+
+def plot_comparison(
+    real,
+    predicted,
+    timesteps,
+    data_type="2d",
+    **kwargs
+):
+    """Unified comparison plot for any data type.
+
+    Parameters
+    ----------
+    real : array-like
+        Ground truth data (n_samples, n_features).
+    predicted : array-like
+        Predicted/reconstructed data.
+    timesteps : list
+        List of timestep indices to visualize.
+    data_type : str, optional
+        "2d" for spatial grids (SST-like), "1d" for time series arrays.
+        Default is "2d".
+    **kwargs
+        Additional arguments passed to the underlying plot function.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : array of matplotlib.axes.Axes
+    """
+    if data_type == "2d":
+        return plot_reconstruction_comparison(real, predicted, timesteps, **kwargs)
+    elif data_type == "1d":
+        return plot_timeseries_comparison(real, predicted, timesteps, **kwargs)
+    else:
+        raise ValueError(f"data_type must be '2d' or '1d', got '{data_type}'")

@@ -15,25 +15,13 @@ Functions
 ---------
 fit
     Training function for SINDy-SHRED models.
-get_device
-    Utility to detect available compute device.
 """
 
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
 from sindy import sindy_library_torch, e_sindy_library_torch
-
-
-def get_device():
-    # Prioritize the mac backend if it is available.
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    elif torch.cuda.is_available():
-        return torch.device("cuda")
-    else:
-        return torch.device("cpu")
-
+from utils import get_device
 
 device = get_device()
 
@@ -360,48 +348,3 @@ def fit(
             if patience_counter == patience:
                 return torch.tensor(val_error_list).cpu()
     return torch.tensor(val_error_list).detach().cpu().numpy()
-
-
-# Do we keep this function? It may not have a use in SINDy-SHRED since comes from
-# SHRED's predictive unrolling of the LSTM rather than integrating the
-# SINDy-identified dynamics forward.
-def forecast(forecaster, reconstructor, test_dataset):
-    initial_in = test_dataset.X[0:1].clone()
-    vals = [
-        initial_in[0, i, :].detach().cpu().clone().numpy()
-        for i in range(test_dataset.X.shape[1])
-    ]
-    for i in range(len(test_dataset.X)):
-        scaled_output1, scaled_output2 = forecaster(initial_in)
-        scaled_output1 = scaled_output1.detach().cpu().numpy()
-        scaled_output2 = scaled_output2.detach().cpu().numpy()
-        vals.append(
-            np.concatenate(
-                [
-                    scaled_output1.reshape(test_dataset.X.shape[2] // 2),
-                    scaled_output2.reshape(test_dataset.X.shape[2] // 2),
-                ]
-            )
-        )
-        temp = initial_in.clone()
-        initial_in[0, :-1] = temp[0, 1:]
-        initial_in[0, -1] = torch.tensor(
-            np.concatenate([scaled_output1, scaled_output2])
-        )
-    # @ToDO: Need to make sure we are handling devices consistently throughout.
-    forecasted_vals = torch.tensor(np.array(vals), dtype=torch.float32).to(device)
-    reconstructions = []
-    for i in range(len(forecasted_vals) - test_dataset.X.shape[1]):
-        recon = (
-            reconstructor(
-                forecasted_vals[i : i + test_dataset.X.shape[1]].reshape(
-                    1, test_dataset.X.shape[1], test_dataset.X.shape[2]
-                )
-            )
-            .detach()
-            .cpu()
-            .numpy()
-        )
-        reconstructions.append(recon)
-    reconstructions = np.array(reconstructions)
-    return forecasted_vals, reconstructions

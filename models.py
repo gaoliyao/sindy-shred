@@ -1,16 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
-
-
-def get_device():
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    elif torch.cuda.is_available():
-        return torch.device("cuda")
-    else:
-        return torch.device("cpu")
-
+from utils import get_device
 
 device = get_device()
 
