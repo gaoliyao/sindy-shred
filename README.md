@@ -13,21 +13,24 @@
 
 <img width="924" alt="SINDy-SHRED Architecture" src="https://github.com/user-attachments/assets/4b37563a-f6cc-49e5-8bd9-44842b70959f" />
 
-SINDy-SHRED is a method for **spatiotemporal modeling** that integrates **sensing and model identification** using a **shallow recurrent decoder network**. It reconstructs full spatiotemporal fields from sparse sensor measurements while learning **interpretable latent space dynamics**.
+SINDy-SHRED combines **sparse dynamics identification** with **shallow recurrent decoder networks** to reconstruct full spatiotemporal fields from sparse sensor measurements while discovering **interpretable governing equations** in the latent space.
 
 **Key Features:**
 
-- **SINDy regularization** enforces latent space dynamics that follow a sparse, interpretable functional form
-- **Gated Recurrent Units (GRUs)** process sequential sensor measurements
-- **Shallow decoder network** reconstructs high-dimensional fields from latent variables
-- **Koopman-SHRED variant** enforces linear latent dynamics using Koopman theory
-- **Minimal hyperparameter tuning** required; runs efficiently on standard hardware
+- **SINDy regularization** enforces sparse, interpretable dynamics in the learned latent space
+- **Gated Recurrent Units (GRUs)** encode sequential sensor measurements into latent trajectories
+- **Shallow decoder network (SDN)** reconstructs high-dimensional fields from latent variables
+- **Post-hoc SINDy discovery** extracts symbolic governing equations from learned latent dynamics
+- **Automatic threshold tuning** via nonparametric coefficient-based search
+- **Support for 1st and 2nd order ODEs** (z' = f(z) and z'' = f(z, z'))
 
 **Applications:**
 
-- Synthetic PDE data modeling
 - Sea Surface Temperature (SST) prediction
-- Long-term video forecasting
+- Flow over a cylinder
+- Isotropic turbulent flow
+- Video forecasting (e.g., pendulum dynamics)
+- Synthetic PDE systems
 
 ## Paper
 
@@ -48,6 +51,7 @@ SINDy-SHRED is a method for **spatiotemporal modeling** that integrates **sensin
 - Matplotlib
 - scikit-learn
 - PySINDy
+- seaborn
 
 ### Dataset
 
@@ -69,13 +73,13 @@ A ready-to-run notebook is available on Google Colab:
 
 ### High-Level API (Recommended)
 
-The `SINDyShred` class provides an end-to-end interface for data preprocessing, training, and SINDy discovery:
+The `SINDySHRED` class provides an end-to-end interface:
 
 ```python
-from sindy_shred import SINDyShred
+from sindy_shred import SINDySHRED
 
 # Initialize the model
-model = SINDyShred(
+model = SINDySHRED(
     latent_dim=3,
     poly_order=1,
     hidden_layers=2,
@@ -89,11 +93,11 @@ model = SINDyShred(
     sindy_regularization=10.0,
 )
 
-# Fit to data (handles preprocessing automatically)
+# Fit to data
 model.fit(
-    num_sensors=num_sensors,
+    num_sensors=3,
     dt=1/52.0,
-    x_to_fit=load_X,
+    x_to_fit=data,  # shape: (time, space)
     lags=52,
     train_length=1000,
     validate_length=30,
@@ -103,33 +107,90 @@ model.fit(
 # Discover governing equations
 model.sindy_identify(threshold=0.05, plot_result=True)
 
-# Generate predictions
-x_predict = model.sindy_predict()
-output = model.shred_decode(x_predict)
+# Predict latent dynamics and decode to physical space
+z_predict = model.sindy_predict()
+forecast = model.shred_decode(z_predict)
+
+# Or use the convenience method
+forecast = model.forecast(n_steps=100)
+
+# Automatic threshold tuning
+best_threshold, results = model.auto_tune_threshold(adaptive=True)
 ```
 
 ### Low-Level API
 
-For finer control over the training process:
+For finer control over training and inference:
 
 ```python
+import torch
+import pysindy as ps
 from sindy_shred_net import SINDy_SHRED_net, fit
 import sindy
 
-library_dim = sindy.library_size(latent_dim, poly_order, include_sine, True)
+# Calculate library dimension
+library_dim = sindy.library_size(latent_dim, poly_order, include_sine=False, include_constant=True)
 
 # Initialize the network
 shred = SINDy_SHRED_net(
-    num_sensors, m, hidden_size=3, hidden_layers=2, l1=350, l2=400, dropout=0.1,
-    library_dim=library_dim, poly_order=3, include_sine=False, dt=1/52.0
-)
+    input_size=num_sensors,
+    output_size=state_dim,
+    hidden_size=latent_dim,
+    hidden_layers=2,
+    l1=350,
+    l2=400,
+    dropout=0.1,
+    library_dim=library_dim,
+    poly_order=3,
+    include_sine=False,
+    dt=dt,
+).to(device)
 
 # Train with custom datasets
 validation_errors = fit(
-    shred, train_dataset, valid_dataset, batch_size=128, num_epochs=600, lr=1e-3,
-    verbose=True, threshold=0.25, patience=5, sindy_regularization=10.0, thres_epoch=100
+    shred,
+    train_dataset,
+    valid_dataset,
+    batch_size=128,
+    num_epochs=600,
+    lr=1e-3,
+    verbose=True,
+    threshold=0.25,
+    patience=5,
+    sindy_regularization=10.0,
+    thres_epoch=100,
 )
+
+# Extract latent trajectories
+gru_outs, _ = shred.gru_outputs(train_dataset.X, sindy=True)
+latent = gru_outs[:, 0, :].detach().cpu().numpy()
+
+# Post-hoc SINDy discovery
+model = ps.SINDy(
+    optimizer=ps.STLSQ(threshold=0.1),
+    feature_library=ps.PolynomialLibrary(degree=poly_order),
+)
+model.fit(latent_normalized, t=dt)
+model.print()
+
+# Simulate and decode predictions
+z_sim = model.simulate(init_cond, t_array)
+z_tensor = torch.tensor(z_denormalized, dtype=torch.float32).to(device)
+physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 ```
+
+---
+
+## Example Notebooks
+
+| Notebook | Description |
+|----------|-------------|
+| `sst_sindy_shred_refactor.ipynb` | Sea Surface Temperature with high-level API |
+| `sst_sindy_shred.ipynb` | Sea Surface Temperature with low-level API |
+| `synthetic_data_sindy_shred_refactor.ipynb` | FitzHugh-Nagumo synthetic data with high-level API |
+| `synthetic_data_sindy_shred.ipynb` | FitzHugh-Nagumo synthetic data with low-level API |
+| `complex_data_sindy_shred_refactor.ipynb` | Complex dynamical systems with high-level API |
+| `complex_data_sindy_shred.ipynb` | Complex dynamical systems with low-level API |
 
 ---
 
@@ -137,11 +198,12 @@ validation_errors = fit(
 
 | Module | Description |
 |--------|-------------|
-| `sindy_shred.py` | High-level `SINDyShred` driver class for end-to-end workflows |
+| `sindy_shred.py` | High-level `SINDySHRED` class for end-to-end workflows |
 | `sindy_shred_net.py` | Core `SINDy_SHRED_net` neural network and training functions |
 | `sindy.py` | SINDy library functions for sparse dynamics identification |
-| `plotting.py` | Visualization utilities for latent space and reconstructions |
+| `plotting.py` | Visualization utilities for latent space and predictions |
 | `processdata.py` | Data loading and preprocessing utilities |
+| `utils.py` | Helper functions (device selection, datasets) |
 
 ---
 
