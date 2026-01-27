@@ -1,4 +1,5 @@
 """SINDy-SHRED: Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder.
+"""SINDy-SHRED: Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder.
 
 This module provides the core neural network components for the SINDy-SHRED architecture,
 which combines recurrent neural networks with sparse dynamics identification for
@@ -273,6 +274,30 @@ class SINDy_SHRED_net(torch.nn.Module):
 
     def sindys_threshold(self, threshold):
         self.e_sindy.thresholding(threshold)
+
+    def decode(self, h):
+        """Decode latent vectors to physical space.
+
+        Parameters
+        ----------
+        h : torch.Tensor
+            Latent vectors of shape (batch_size, hidden_size).
+
+        Returns
+        -------
+        torch.Tensor
+            Decoded output of shape (batch_size, output_size).
+        """
+        output = self.linear1(h)
+        output = self.dropout(output)
+        output = torch.nn.functional.relu(output)
+
+        output = self.linear2(output)
+        output = self.dropout(output)
+        output = torch.nn.functional.relu(output)
+
+        output = self.linear3(output)
+        return output
 
 
 def fit(
