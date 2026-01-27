@@ -1,8 +1,16 @@
 .idea
 .ipynb_checkpoints
 __pycache__
-*.ipynb
-*.pdf
-*.png
 *.mat
 Data/SST_data.mat
+
+# Results folder - ignore generated files but keep structure
+results/**/*.npy
+results/**/*.pt
+results/**/*.pdf
+results/**/*.png
+results/**/*.txt
+!results/**/.gitkeep
+results/**
+archive/**
+devs/**

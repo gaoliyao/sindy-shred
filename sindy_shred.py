@@ -6,30 +6,14 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import random
 import matplotlib.pyplot as plt
-
 import warnings
+
+from utils import get_device, TimeSeriesDataset
 
 warnings.simplefilter("ignore", UserWarning)
 
 
-class TimeSeriesDataset(torch.utils.data.Dataset):
-    """Takes input sequence of sensor measurements with shape (batch size, lags,
-    num_sensors) and corresponding measurements of high-dimensional state,
-    return Torch dataset"""
-
-    def __init__(self, X, Y):
-        self.X = X
-        self.Y = Y
-        self.len = X.shape[0]
-
-    def __getitem__(self, index):
-        return self.X[index], self.Y[index]
-
-    def __len__(self):
-        return self.len
-
-
-class SINDyShred:
+class SINDySHRED:
     """The infrastructure for fitting and working with a SINDy-SHRED model.
 
     :param latent_dim:
@@ -75,6 +59,7 @@ class SINDyShred:
         latent_dim=None,
         poly_order=None,
         include_sine=False,
+        ode_order=1,  # NEW: 1 for x' = f(x), 2 for x'' = f(x, x')
         hidden_layers=2,
         l1=350,
         l2=400,
@@ -98,15 +83,8 @@ class SINDyShred:
         self._x_sim = None
         self._model = None
         self._shred = None
-        if device is None:
-            if torch.backends.mps.is_available():
-                self._device = "mps"
-            elif torch.cuda.is_available():
-                self._device = "cuda"
-            else:
-                self._device = "cpu"
-        else:
-            self._device = device
+        self._device = device if device is not None else get_device()
+        self._ode_order = ode_order
 
         self._train_data = None
         self._valid_data = None
@@ -161,6 +139,34 @@ class SINDyShred:
         :rtype: numpy.ndarray
         """
         return np.linalg.norm(x_est - x_true) / np.linalg.norm(x_true)
+
+    @staticmethod
+    def estimate_velocity(z, dt):
+        """Estimate dz/dt from latent trajectories using finite difference.
+
+        For 2nd order ODE systems, we need velocity (z') in addition to position (z).
+        This method estimates velocity using centered finite differences.
+
+        Parameters
+        ----------
+        z : numpy.ndarray
+            Position trajectories, shape (n_samples, latent_dim).
+        dt : float
+            Time step between samples.
+
+        Returns
+        -------
+        dz : numpy.ndarray
+            Estimated velocity, shape (n_samples-2, latent_dim) for centered diff,
+            or (n_samples-1, latent_dim) for forward diff.
+        z_trimmed : numpy.ndarray
+            Position array trimmed to match velocity array length.
+        """
+        # Use centered finite difference for better accuracy
+        # dz[i] = (z[i+1] - z[i-1]) / (2*dt)
+        dz = (z[2:] - z[:-2]) / (2 * dt)
+        z_trimmed = z[1:-1]  # Match the length of centered diff
+        return dz, z_trimmed
 
     def _get_data_dims(self, x_to_fit):
         """Assign the data size properties"""
@@ -384,6 +390,9 @@ class SINDyShred:
     ):
         """Post-hoc model discovery with SINDy using SHRED latent space trajectories.
 
+        For 1st order systems (ode_order=1): Discovers z' = f(z)
+        For 2nd order systems (ode_order=2): Discovers z'' = f(z, z')
+
         :param threshold: Sparsity threshold for SINDy
         :type threshold: float
         :param differentiation_method: Diff. method for SINDy.
@@ -404,41 +413,109 @@ class SINDyShred:
 
         # Normalized SINDy-SHRED latent space trajectories for post-hoc model discovery
         gru_outs = self.gru_normalize(data_type="train")
-        x = gru_outs.detach().cpu().numpy()
-        self._gru_outs = x
+        z = gru_outs.detach().cpu().numpy()
+        self._gru_outs = z
 
-        # SINDy discovery
-        model = ps.SINDy(
-            optimizer=ps.STLSQ(threshold=threshold, alpha=0.05),
-            differentiation_method=self._differentiation_method,
-            feature_library=ps.PolynomialLibrary(degree=self._poly_order),
-        )
+        if self._ode_order == 1:
+            # 1st order ODE: z' = f(z)
+            model = ps.SINDy(
+                optimizer=ps.STLSQ(threshold=threshold, alpha=0.05),
+                differentiation_method=self._differentiation_method,
+                feature_library=ps.PolynomialLibrary(degree=self._poly_order),
+            )
+            model.fit(z, t=self._dt, ensemble=True)
+            self._model = model
 
-        model.fit(x, t=self._dt, ensemble=True)
-        self._model = model
+            if self._verbose:
+                print("SINDy-derived dynamical equation (1st order):\n")
+                model.print()
 
-        if self._verbose:
-            print("SINDy-derived dynamical equation:\n")
-            model.print()
+            # Plot the discovered SINDy model
+            if plot_result:
+                self.sindy_simulate(z)
+                x_sim = self._x_sim
+                t_train = np.arange(0, len(z) * self._dt, self._dt)
+                fig, ax = plt.subplots(self._latent_dim, sharex=True, sharey=True)
+                if self._latent_dim == 1:
+                    ax = [ax]
+                for i in range(self._latent_dim):
+                    ax[i].plot(
+                        t_train, gru_outs[:, i].detach().cpu().numpy(), label="SINDy-SHRED"
+                    )
+                    ax[i].plot(t_train, x_sim[:, i], "k--", label="identified model")
+                    ax[i].set_ylabel(rf"$z_{{{i}}}$ (-)")
+                    if i == self._latent_dim - 1:
+                        ax[i].set_xlabel("time (n steps)")
+                        ax[i].legend()
+                plt.show()
 
-        # Plot the discovered SINDy model
-        if plot_result:
-            self.sindy_simulate(x)
-            x_sim = self._x_sim
-            t_train = np.arange(0, len(x) * self._dt, self._dt)
-            fig, ax = plt.subplots(self._latent_dim, sharex=True, sharey=True)
-            for i in range(self._latent_dim):
-                ax[i].plot(
-                    t_train, gru_outs[:, i].detach().cpu().numpy(), label="SINDy-SHRED"
-                )
-                ax[i].plot(t_train, x_sim[:, i], "k--", label="identified model")
-                ax[i].set_ylabel(rf"$z_{{{i}}}$ (-)")
-                if i == self._latent_dim - 1:
-                    ax[i].set_xlabel("time (n steps)")
-                    ax[i].legend()
-            plt.show()
+        elif self._ode_order == 2:
+            # 2nd order ODE: z'' = f(z, z')
+            # Convert to state-space form: [z, v]' = [v, f(z, v)] where v = z'
 
-    # @ToDo: Integrate this function with sindy_predict, below.
+            # Estimate velocity using finite difference
+            dz, z_trimmed = self.estimate_velocity(z, self._dt)
+            self._z_trimmed = z_trimmed
+            self._dz = dz
+
+            # Store initial conditions for prediction
+            self._init_z = z_trimmed[0, :]
+            self._init_dz = dz[0, :]
+
+            # Concatenate position and velocity for state-space representation
+            # State x = [z, v] where v = dz/dt
+            x_state = np.concatenate([z_trimmed, dz], axis=1)
+
+            # Compute acceleration for fitting: ddz = d(dz)/dt
+            ddz = (dz[1:] - dz[:-1]) / self._dt
+
+            # Align arrays: x_state needs to be trimmed to match ddz length
+            x_state_trimmed = x_state[:-1]
+
+            # Build derivative array: dx/dt = [dz, ddz]
+            dz_trimmed = dz[:-1]
+            x_dot = np.concatenate([dz_trimmed, ddz], axis=1)
+
+            # Fit SINDy model with explicit derivatives
+            model = ps.SINDy(
+                optimizer=ps.STLSQ(threshold=threshold, alpha=0.05),
+                feature_library=ps.PolynomialLibrary(degree=self._poly_order),
+            )
+            model.fit(x_state_trimmed, t=self._dt, x_dot=x_dot)
+            self._model = model
+
+            if self._verbose:
+                print("SINDy-derived dynamical equation (2nd order, state-space form):\n")
+                print("State: [z_0, ..., z_{n-1}, v_0, ..., v_{n-1}]")
+                print("where v = dz/dt\n")
+                model.print()
+
+            # Plot the discovered SINDy model
+            if plot_result:
+                self.sindy_simulate(z)
+                x_sim = self._x_sim
+                t_train = np.arange(0, len(z_trimmed) * self._dt, self._dt)
+                fig, ax = plt.subplots(self._latent_dim * 2, sharex=True, figsize=(8, 2 * self._latent_dim))
+                if self._latent_dim * 2 == 1:
+                    ax = [ax]
+                # Plot positions
+                for i in range(self._latent_dim):
+                    ax[i].plot(t_train, z_trimmed[:, i], label="SINDy-SHRED")
+                    ax[i].plot(t_train, x_sim[:, i], "k--", label="identified model")
+                    ax[i].set_ylabel(rf"$z_{{{i}}}$ (-)")
+                    if i == 0:
+                        ax[i].legend()
+                # Plot velocities
+                for i in range(self._latent_dim):
+                    ax[self._latent_dim + i].plot(t_train, dz[:, i], label="estimated")
+                    ax[self._latent_dim + i].plot(t_train, x_sim[:, self._latent_dim + i], "k--", label="identified model")
+                    ax[self._latent_dim + i].set_ylabel(rf"$\dot{{z}}_{{{i}}}$ (-)")
+                ax[-1].set_xlabel("time (n steps)")
+                plt.tight_layout()
+                plt.show()
+        else:
+            raise ValueError(f"ode_order must be 1 or 2, got {self._ode_order}")
+
     def sindy_simulate(self, x):
         """Integrate the SINDy model forward in time.
 
@@ -446,25 +523,249 @@ class SINDyShred:
         given by `dt`. The initial value for the latent space is given as the first
         latent space value from the SINDy-SHRED model.
 
+        For 2nd order systems, integrates in state-space form [z, dz].
+
         :param x: SINDy-SHRED latent space (e.g., from `SINDy_SHRED_net.gru_outputs`)
         :type x: numpy.ndarray
         """
         model = self._model
-        t_train = np.arange(0, len(x) * self._dt, self._dt)
-        init_cond = np.zeros(self._latent_dim)
-        init_cond[: self._latent_dim] = x[0, :]
-        self._x_sim = model.simulate(init_cond, t_train)
 
-    def sindy_predict(self, t=None, init_cond=None, init_from="train"):
+        if self._ode_order == 1:
+            t_train = np.arange(0, len(x) * self._dt, self._dt)
+            init_cond = np.zeros(self._latent_dim)
+            init_cond[: self._latent_dim] = x[0, :]
+            self._x_sim = model.simulate(init_cond, t_train)
+
+        elif self._ode_order == 2:
+            # For 2nd order, use trimmed data length and state-space initial conditions
+            z_trimmed = self._z_trimmed
+            t_train = np.arange(0, len(z_trimmed) * self._dt, self._dt)
+
+            # Initial condition is [z(0), dz(0)]
+            init_cond = np.concatenate([self._init_z, self._init_dz])
+            self._x_sim = model.simulate(init_cond, t_train)
+
+    def auto_tune_threshold(
+        self,
+        thresholds=None,
+        metric="sparsity_stable",
+        test_steps=None,
+        divergence_threshold=1e6,
+        verbose=None,
+        adaptive=True,
+        scale_factor=0.3,
+        n_thresholds=10,
+    ):
+        """Automatically select SINDy threshold via model evaluation.
+
+        This method sweeps through candidate thresholds, fits a SINDy model for each,
+        integrates forward to check for stability, and selects the best model based
+        on the specified metric.
+
+        Parameters
+        ----------
+        thresholds : array-like, optional
+            Candidate threshold values to test. If None and adaptive=False, uses a
+            default range. Ignored if adaptive=True.
+        metric : str, optional
+            Selection criterion. Options:
+            - "sparsity_stable": Sparsest stable model (default)
+            - "bic": Lowest Bayesian Information Criterion
+            - "aic": Lowest Akaike Information Criterion
+        test_steps : int, optional
+            Number of steps for forward integration test. If None, uses test length.
+        divergence_threshold : float, optional
+            Max allowed value before model is considered divergent. Default is 1e6.
+        verbose : bool, optional
+            Print progress. If None, uses class verbose setting.
+        adaptive : bool, optional
+            If True, uses a nonparametric approach to determine thresholds:
+            1. First fits a least-squares solution (threshold=0)
+            2. Computes max_threshold = scale_factor * max(|coefficients|)
+            3. Generates n_thresholds evenly spaced values from 0 to max_threshold
+            Default is True.
+        scale_factor : float, optional
+            Fraction of max coefficient magnitude to use as max threshold when
+            adaptive=True. Default is 0.3.
+        n_thresholds : int, optional
+            Number of threshold values to test when adaptive=True. Default is 10.
+
+        Returns
+        -------
+        best_threshold : float
+            The selected threshold value.
+        results : dict
+            Dictionary with keys:
+            - 'thresholds': tested threshold values
+            - 'sparsity': number of nonzero coefficients for each
+            - 'stable': whether each model is stable
+            - 'bic': BIC for each (if computable)
+            - 'aic': AIC for each (if computable)
+            - 'best_idx': index of selected model
+        """
+        if verbose is None:
+            verbose = self._verbose
+
+        if self._gru_outs is None:
+            # Need to get normalized latent space first
+            gru_outs = self.gru_normalize(data_type="train")
+            x_train = gru_outs.detach().cpu().numpy()
+        else:
+            x_train = self._gru_outs
+
+        if adaptive:
+            # Nonparametric approach: determine thresholds from least-squares solution
+            if verbose:
+                print("Computing least-squares solution to determine threshold range...")
+
+            # Fit with threshold=0 to get the full least-squares solution
+            ls_model = ps.SINDy(
+                optimizer=ps.STLSQ(threshold=0.0, alpha=0.05),
+                differentiation_method=self._differentiation_method,
+                feature_library=ps.PolynomialLibrary(degree=self._poly_order),
+            )
+            ls_model.fit(x_train, t=self._dt)
+
+            # Get max absolute coefficient value
+            coeffs = ls_model.coefficients()
+            max_coeff = np.max(np.abs(coeffs))
+            max_threshold = scale_factor * max_coeff
+
+            # Generate evenly spaced thresholds from 0 to max_threshold
+            thresholds = np.linspace(0, max_threshold, n_thresholds)
+
+            if verbose:
+                print(f"Max |coefficient|: {max_coeff:.4f}")
+                print(f"Max threshold (scale_factor={scale_factor}): {max_threshold:.4f}")
+                print(f"Testing {n_thresholds} thresholds: {thresholds}")
+        elif thresholds is None:
+            thresholds = np.array([0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5])
+
+        if test_steps is None:
+            test_steps = self._test_length if self._test_length else 100
+
+        # Get test latent space for validation
+        gru_test = self.gru_normalize(data_type="test")
+        x_test = gru_test.detach().cpu().numpy()
+
+        results = {
+            'thresholds': thresholds,
+            'sparsity': [],
+            'stable': [],
+            'bic': [],
+            'aic': [],
+            'mse': [],
+        }
+
+        for thresh in thresholds:
+            if verbose:
+                print(f"Testing threshold={thresh:.3f}...", end=" ")
+
+            # Fit SINDy with this threshold
+            model = ps.SINDy(
+                optimizer=ps.STLSQ(threshold=thresh, alpha=0.05),
+                differentiation_method=self._differentiation_method,
+                feature_library=ps.PolynomialLibrary(degree=self._poly_order),
+            )
+            model.fit(x_train, t=self._dt)
+
+            # Count nonzero coefficients (sparsity)
+            n_nonzero = np.count_nonzero(model.coefficients())
+            results['sparsity'].append(n_nonzero)
+
+            # Test stability via forward integration
+            try:
+                t_test = np.arange(0, test_steps * self._dt, self._dt)
+                init_cond = x_test[0, :]
+                x_sim = model.simulate(init_cond, t_test)
+
+                # Check for divergence
+                if np.any(np.abs(x_sim) > divergence_threshold) or np.any(np.isnan(x_sim)):
+                    is_stable = False
+                    mse = np.inf
+                else:
+                    is_stable = True
+                    # Compute MSE against test data
+                    n_compare = min(len(x_sim), len(x_test))
+                    mse = np.mean((x_sim[:n_compare] - x_test[:n_compare]) ** 2)
+            except Exception:
+                is_stable = False
+                mse = np.inf
+
+            results['stable'].append(is_stable)
+            results['mse'].append(mse)
+
+            # Compute information criteria (simplified)
+            n_samples = len(x_train)
+            n_params = n_nonzero
+            if mse > 0 and mse < np.inf:
+                # Approximate log-likelihood
+                log_likelihood = -n_samples * np.log(mse + 1e-10) / 2
+                bic = n_params * np.log(n_samples) - 2 * log_likelihood
+                aic = 2 * n_params - 2 * log_likelihood
+            else:
+                bic = np.inf
+                aic = np.inf
+
+            results['bic'].append(bic)
+            results['aic'].append(aic)
+
+            if verbose:
+                status = "stable" if is_stable else "DIVERGED"
+                print(f"sparsity={n_nonzero}, {status}, MSE={mse:.4e}")
+
+        # Select best model based on metric
+        results['sparsity'] = np.array(results['sparsity'])
+        results['stable'] = np.array(results['stable'])
+        results['bic'] = np.array(results['bic'])
+        results['aic'] = np.array(results['aic'])
+        results['mse'] = np.array(results['mse'])
+
+        stable_mask = results['stable']
+
+        if not np.any(stable_mask):
+            if verbose:
+                print("Warning: No stable models found. Using least divergent.")
+            best_idx = np.argmin(results['mse'])
+        elif metric == "sparsity_stable":
+            # Among stable models, pick the sparsest
+            stable_indices = np.where(stable_mask)[0]
+            best_idx = stable_indices[np.argmin(results['sparsity'][stable_mask])]
+        elif metric == "bic":
+            stable_indices = np.where(stable_mask)[0]
+            best_idx = stable_indices[np.argmin(results['bic'][stable_mask])]
+        elif metric == "aic":
+            stable_indices = np.where(stable_mask)[0]
+            best_idx = stable_indices[np.argmin(results['aic'][stable_mask])]
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+
+        results['best_idx'] = best_idx
+        best_threshold = thresholds[best_idx]
+
+        if verbose:
+            print(f"\nBest threshold: {best_threshold:.3f} "
+                  f"(sparsity={results['sparsity'][best_idx]}, "
+                  f"MSE={results['mse'][best_idx]:.4e})")
+
+        # Re-fit with best threshold and store
+        self.sindy_identify(threshold=best_threshold, plot_result=False)
+
+        return best_threshold, results
+
+    def sindy_predict(self, t=None, init_cond=None, init_from="test", return_velocity=False):
         """Predict the latent space using the discovered SINDy model.
 
         This function integrates the discovered SINDy model forward in time starting
         from a specified initial condition.
 
+        For 1st order systems: predicts z(t) given z(0)
+        For 2nd order systems: predicts [z(t), dz(t)] given [z(0), dz(0)]
+
         :param t: Time array for integration. If None, uses test length with dt.
         :type t: numpy.ndarray or None
         :param init_cond: Initial condition for integration. If None, determined by
-            init_from parameter.
+            init_from parameter. For 2nd order, should be [z0, dz0].
         :type init_cond: numpy.ndarray or None
         :param init_from: Where to get initial condition if init_cond is None.
             "test" - use first test point's latent state (default, for comparing
@@ -472,7 +773,12 @@ class SINDyShred:
             "train" - use last training point's latent state (for forecasting
                       beyond training data)
         :type init_from: str
-        :return: Predicted latent space trajectories
+        :param return_velocity: For 2nd order systems, whether to return [z, dz] or just z.
+            Default is False (return only position).
+        :type return_velocity: bool
+        :return: Predicted latent space trajectories. For 1st order, shape (n_times, latent_dim).
+            For 2nd order with return_velocity=False, shape (n_times, latent_dim).
+            For 2nd order with return_velocity=True, shape (n_times, 2*latent_dim).
         :rtype: numpy.ndarray
         """
 
@@ -482,29 +788,52 @@ class SINDyShred:
 
         model = self._model
 
-        if init_cond is None:
-            init_cond = np.zeros(self._latent_dim)
-            if init_from == "test":
-                # Use first test point's latent state. This approach technically
-                # leaks information from the test split and is not recommended.
-                gru_test_np = (
-                    self.gru_normalize(data_type="test").detach().cpu().numpy()
-                )
-                init_cond[: self._latent_dim] = gru_test_np[0, :]
-            elif init_from == "train":
-                # Use last training point's latent state (for forecasting)
-                gru_train_np = (
-                    self.gru_normalize(data_type="train").detach().cpu().numpy()
-                )
-                init_cond[: self._latent_dim] = gru_train_np[-1, :]
+        if self._ode_order == 1:
+            if init_cond is None:
+                init_cond = np.zeros(self._latent_dim)
+                if init_from == "test":
+                    gru_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
+                    init_cond[: self._latent_dim] = gru_test_np[0, :]
+                elif init_from == "train":
+                    gru_train_np = self.gru_normalize(data_type="train").detach().cpu().numpy()
+                    init_cond[: self._latent_dim] = gru_train_np[-1, :]
+                else:
+                    raise ValueError(
+                        f"init_from must be 'test' or 'train', got '{init_from}'"
+                    )
+
+            x_predict = model.simulate(init_cond, t)
+            return x_predict
+
+        elif self._ode_order == 2:
+            # For 2nd order, initial condition is [z0, dz0]
+            if init_cond is None:
+                if init_from == "test":
+                    # Get test data and estimate velocity
+                    gru_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
+                    dz_test, z_test = self.estimate_velocity(gru_test_np, self._dt)
+                    init_z = z_test[0, :]
+                    init_dz = dz_test[0, :]
+                elif init_from == "train":
+                    # Use stored training data velocities
+                    init_z = self._z_trimmed[-1, :]
+                    init_dz = self._dz[-1, :]
+                else:
+                    raise ValueError(
+                        f"init_from must be 'test' or 'train', got '{init_from}'"
+                    )
+                init_cond = np.concatenate([init_z, init_dz])
+
+            # Integrate in state-space form
+            x_predict = model.simulate(init_cond, t)
+
+            if return_velocity:
+                return x_predict
             else:
-                raise ValueError(
-                    f"init_from must be 'test' or 'train', got '{init_from}'"
-                )
-
-        x_predict = model.simulate(init_cond, t)
-
-        return x_predict
+                # Return only position (first latent_dim columns)
+                return x_predict[:, :self._latent_dim]
+        else:
+            raise ValueError(f"ode_order must be 1 or 2, got {self._ode_order}")
 
     def gru_normalize(self, data_type=None):
         """Get grus and normalize them by the training data.
@@ -549,11 +878,15 @@ class SINDyShred:
         return gru_outs
 
     def shred_decode(self, z):
-        """Convert SINDy simulated latent space into scaled physical space using SHRED
+        """Convert SINDy simulated latent space into scaled physical space using SHRED.
 
         A SINDy-SHRED model needs to have been fit first.
 
-        :param z: Latent space trajectories (i.e. from SINDy model)
+        Note: For 2nd order systems, this method expects only position z, not the
+        full state [z, dz]. Use sindy_predict() with return_velocity=False (default)
+        to get the correct input format.
+
+        :param z: Latent space trajectories (i.e. from SINDy model), shape (n_samples, latent_dim)
         :type z: numpy.ndarray or torch.tensor
         :return: Physical, high-dimensional signal in min-max scaled space.
         :rtype: numpy.ndarray
@@ -594,3 +927,85 @@ class SINDyShred:
         output_sindy_np = output_sindy.detach().cpu().numpy()
 
         return output_sindy_np
+
+    def sensor_recon(self, data_type="test", return_scaled=False):
+        """Reconstruct full state from sparse sensor measurements.
+
+        This method uses the trained SHRED network to reconstruct the full
+        high-dimensional state from the sparse sensor trajectory inputs.
+
+        Parameters
+        ----------
+        data_type : str, optional
+            Which data split to reconstruct. One of "train", "validate", or "test".
+            Default is "test".
+        return_scaled : bool, optional
+            If True, return scaled (0-1) values. If False, return in original scale.
+            Default is False.
+
+        Returns
+        -------
+        reconstructions : numpy.ndarray
+            Reconstructed high-dimensional states, shape (n_samples, state_dim).
+        """
+        if data_type == "train":
+            data = self._train_data
+        elif data_type == "validate":
+            data = self._valid_data
+        elif data_type == "test":
+            data = self._test_data
+        else:
+            raise ValueError(f"data_type must be 'train', 'validate', or 'test', got '{data_type}'")
+
+        # Get reconstructions from SHRED
+        recons_scaled = self._shred(data.X).detach().cpu().numpy()
+
+        if return_scaled:
+            return recons_scaled
+        else:
+            # Inverse transform to original scale
+            return self._scaler.inverse_transform(recons_scaled)
+
+    def forecast(self, n_steps=None, init_from="test", return_scaled=False):
+        """Forecast future states using the discovered SINDy model.
+
+        This is a convenience method that combines sindy_predict() and shred_decode()
+        to produce forecasts in physical space.
+
+        Parameters
+        ----------
+        n_steps : int, optional
+            Number of time steps to forecast. If None, uses test length.
+        init_from : str, optional
+            Where to get initial condition. "test" uses first test point,
+            "train" uses last training point. Default is "test".
+        return_scaled : bool, optional
+            If True, return scaled (0-1) values. If False, return in original scale.
+            Default is False.
+
+        Returns
+        -------
+        forecast : numpy.ndarray
+            Forecasted high-dimensional states, shape (n_steps, state_dim).
+        """
+        if self._model is None:
+            raise ValueError("Must call sindy_identify() before forecasting.")
+
+        if n_steps is None:
+            n_steps = self._test_length
+
+        # Predict latent trajectories
+        t = np.arange(0, n_steps * self._dt, self._dt)
+        z_predict = self.sindy_predict(t=t, init_from=init_from)
+
+        # Decode to physical space
+        forecast_scaled = self.shred_decode(z_predict)
+
+        if return_scaled:
+            return forecast_scaled
+        else:
+            return self._scaler.inverse_transform(forecast_scaled)
+
+    # Aliases for clearer API
+    predict_latent = sindy_predict
+    decode_to_physical = shred_decode

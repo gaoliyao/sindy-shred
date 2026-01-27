@@ -1,22 +1,98 @@
 # Author: Mars Gao
 # Date: Nov/17/2021
 
-# Include necessary packages
+"""SINDy library construction functions.
+
+This module provides functions to build SINDy libraries for sparse dynamics
+identification, supporting both 1st and 2nd order ODEs.
+"""
+
 import torch
 from scipy.special import binom
 
 
-def get_device():
-    # Prioritize the mac backend if it is available.
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    elif torch.cuda.is_available():
-        return torch.device("cuda")
+def build_sindy_library(z, poly_order, include_sine=False, dz=None):
+    """Build SINDy library for 1st or 2nd order ODEs.
+
+    This is the unified interface for building SINDy libraries. For 1st order
+    systems (dz=None), builds library Θ(z). For 2nd order systems (dz provided),
+    builds library Θ(z, dz) where dz represents velocity.
+
+    Parameters
+    ----------
+    z : torch.Tensor
+        Position variables, shape (n_samples, latent_dim).
+    poly_order : int
+        Polynomial order for the library (max 5).
+    include_sine : bool, optional
+        Whether to include sine terms. Default is False.
+    dz : torch.Tensor, optional
+        Velocity variables for 2nd order systems, shape (n_samples, latent_dim).
+        If provided, builds 2nd order library. Default is None.
+
+    Returns
+    -------
+    library : torch.Tensor
+        SINDy library, shape (n_samples, library_dim).
+    """
+    device = z.device
+
+    if dz is not None:
+        # 2nd order: combine position and velocity
+        z_combined = torch.cat([z, dz], dim=1)
+        n_vars = z_combined.shape[1]
     else:
-        return torch.device("cpu")
+        # 1st order: just position
+        z_combined = z
+        n_vars = z.shape[1]
 
+    library = [torch.ones(z.shape[0], device=device)]
 
-device = get_device()
+    # Linear terms
+    for i in range(n_vars):
+        library.append(z_combined[:, i])
+
+    # Quadratic terms
+    if poly_order > 1:
+        for i in range(n_vars):
+            for j in range(i, n_vars):
+                library.append(z_combined[:, i] * z_combined[:, j])
+
+    # Cubic terms
+    if poly_order > 2:
+        for i in range(n_vars):
+            for j in range(i, n_vars):
+                for k in range(j, n_vars):
+                    library.append(z_combined[:, i] * z_combined[:, j] * z_combined[:, k])
+
+    # Quartic terms
+    if poly_order > 3:
+        for i in range(n_vars):
+            for j in range(i, n_vars):
+                for k in range(j, n_vars):
+                    for p in range(k, n_vars):
+                        library.append(
+                            z_combined[:, i] * z_combined[:, j] * z_combined[:, k] * z_combined[:, p]
+                        )
+
+    # Quintic terms
+    if poly_order > 4:
+        for i in range(n_vars):
+            for j in range(i, n_vars):
+                for k in range(j, n_vars):
+                    for p in range(k, n_vars):
+                        for q in range(p, n_vars):
+                            library.append(
+                                z_combined[:, i] * z_combined[:, j] * z_combined[:, k]
+                                * z_combined[:, p] * z_combined[:, q]
+                            )
+
+    # Sine terms
+    if include_sine:
+        for i in range(n_vars):
+            library.append(torch.sin(z_combined[:, i]))
+
+    return torch.stack(library, dim=1)
 
 
 def sindy_library_torch(z, latent_dim, poly_order, include_sine=False):
@@ -132,260 +208,57 @@ def e_sindy_library_torch(z, latent_dim, poly_order, include_sine=False):
     return torch.stack(library, axis=1)
 
 
-def sindy_library_torch_version2(z, latent_dim, poly_order=3, include_sine=False):
+def sindy_library_torch_order2(z, dz, latent_dim, poly_order, include_sine=False):
+    """Build SINDy library for 2nd order systems.
+
+    Wrapper around build_sindy_library for backward compatibility.
+
+    Parameters
+    ----------
+    z : torch.Tensor
+        Position variables, shape (n_samples, latent_dim).
+    dz : torch.Tensor
+        Velocity variables, shape (n_samples, latent_dim).
+    latent_dim : int
+        Number of latent dimensions (unused, inferred from z).
+    poly_order : int
+        Polynomial order for the library.
+    include_sine : bool, optional
+        Whether to include sine terms. Default is False.
+
+    Returns
+    -------
+    library : torch.Tensor
+        SINDy library, shape (n_samples, library_dim).
     """
-    Efficiently construct the SINDy library tensor including up to the specified
-    polynomial order, focusing on reducing computational overhead for cubic terms.
-    Determines the device based on where z is allocated.
+    return build_sindy_library(z, poly_order, include_sine=include_sine, dz=dz)
+
+
+def e_sindy_library_torch_order2(z, dz, latent_dim, poly_order, include_sine=False):
+    """Build ensemble SINDy library for 2nd order systems.
+
+    Wrapper around build_sindy_library for backward compatibility.
+    Same as sindy_library_torch_order2.
+
+    Parameters
+    ----------
+    z : torch.Tensor
+        Position variables, shape (n_samples, latent_dim).
+    dz : torch.Tensor
+        Velocity variables, shape (n_samples, latent_dim).
+    latent_dim : int
+        Number of latent dimensions (unused, inferred from z).
+    poly_order : int
+        Polynomial order for the library.
+    include_sine : bool, optional
+        Whether to include sine terms. Default is False.
+
+    Returns
+    -------
+    library : torch.Tensor
+        SINDy library, shape (n_samples, library_dim).
     """
-    device = z.device
-    # Start with the constant term (bias term)
-    library = [torch.ones(z.shape[0], 1, device=device)]
-
-    # Linear terms
-    library.append(z)
-
-    if poly_order >= 2:
-        # Efficient quadratic term generation using broadcasting
-        z_expanded = z.unsqueeze(-1)
-        quadratic_terms = z_expanded * z_expanded.transpose(1, 2)
-        idx_upper_tri = torch.triu_indices(z.shape[1], z.shape[1], device=device)
-        quadratic_terms = quadratic_terms[:, idx_upper_tri[0], idx_upper_tri[1]]
-        library.append(quadratic_terms)
-
-    if poly_order >= 3:
-        # Efficient cubic term generation using a single loop
-        cubic_terms = []
-        for i in range(z.shape[1]):
-            for j in range(i, z.shape[1]):
-                for k in range(j, z.shape[1]):
-                    cubic_term = z[:, i] * z[:, j] * z[:, k]
-                    cubic_terms.append(cubic_term.unsqueeze(1))
-        cubic_terms = torch.cat(cubic_terms, dim=1)
-        library.append(cubic_terms)
-
-    # Concatenate all terms to form the library
-    library = torch.cat(library, dim=1)
-
-    if include_sine:
-        sine_terms = torch.sin(z)
-        library = torch.cat([library, sine_terms], dim=1)
-
-    return library
-
-
-def sindy_library_torch_order2(
-    z, dz, latent_dim, poly_order, include_sine=False, sine_k=1.0, print_names="False"
-):
-    """
-    Build the SINDy library for a second order system. This is essentially the same as
-    for a first order system, but library terms are also built for the derivatives.
-    """
-    library = [torch.ones(z.shape[0]).cuda()]
-    library_names = ["constant", "constant"]
-
-    z_combined = torch.concat([z, dz], 1)
-
-    for i in range(2 * latent_dim):
-        library.append(z_combined[:, i])
-        library_names.append("z_combined[" + str(i) + "]")
-
-    if poly_order > 1:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                library.append(torch.multiply(z_combined[:, i], z_combined[:, j]))
-                library_names.append(
-                    "z_combined[" + str(i) + "]*" + "z_combined[" + str(j) + "]"
-                )
-
-    if poly_order > 2:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    library.append(
-                        z_combined[:, i] * z_combined[:, j] * z_combined[:, k]
-                    )
-
-    if poly_order > 3:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    for p in range(k, 2 * latent_dim):
-                        library.append(
-                            z_combined[:, i]
-                            * z_combined[:, j]
-                            * z_combined[:, k]
-                            * z_combined[:, p]
-                        )
-
-    if poly_order > 4:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    for p in range(k, 2 * latent_dim):
-                        for q in range(p, 2 * latent_dim):
-                            library.append(
-                                z_combined[:, i]
-                                * z_combined[:, j]
-                                * z_combined[:, k]
-                                * z_combined[:, p]
-                                * z_combined[:, q]
-                            )
-
-    if include_sine:
-        for i in range(2 * latent_dim):
-            library.append(torch.sin(sine_k * z_combined[:, i]))
-            library_names.append("sin(z_combined[" + str(i) + "])")
-
-    if print_names == True:
-        print(library_names)
-
-    return torch.stack(library, axis=1)
-
-
-def e_sindy_library_torch_order2(
-    z, dz, latent_dim, poly_order, include_sine=False, sine_k=1.0, print_names="False"
-):
-    """
-    Build the SINDy library for a second order system. This is essentially the same
-    as for a first order system, but library terms are also built for the derivatives.
-    """
-    library = [torch.ones(z.shape[0]).cuda()]
-    library_names = ["constant", "constant"]
-
-    z_combined = torch.concat([z, dz], 1)
-
-    for i in range(2 * latent_dim):
-        library.append(z_combined[:, i])
-        library_names.append("z_combined[" + str(i) + "]")
-
-    if poly_order > 1:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                library.append(torch.multiply(z_combined[:, i], z_combined[:, j]))
-                library_names.append(
-                    "z_combined[" + str(i) + "]*" + "z_combined[" + str(j) + "]"
-                )
-
-    if poly_order > 2:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    library.append(
-                        z_combined[:, i] * z_combined[:, j] * z_combined[:, k]
-                    )
-
-    if poly_order > 3:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    for p in range(k, 2 * latent_dim):
-                        library.append(
-                            z_combined[:, i]
-                            * z_combined[:, j]
-                            * z_combined[:, k]
-                            * z_combined[:, p]
-                        )
-
-    if poly_order > 4:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    for p in range(k, 2 * latent_dim):
-                        for q in range(p, 2 * latent_dim):
-                            library.append(
-                                z_combined[:, i]
-                                * z_combined[:, j]
-                                * z_combined[:, k]
-                                * z_combined[:, p]
-                                * z_combined[:, q]
-                            )
-
-    if include_sine:
-        for i in range(2 * latent_dim):
-            library.append(torch.sin(sine_k * z_combined[:, i]))
-            library_names.append("sin(z_combined[" + str(i) + "])")
-
-    if print_names == True:
-        print(library_names)
-
-    return torch.stack(library, axis=1)
-
-
-def sindy_library_torch_double_pendulum(
-    z,
-    dz,
-    ddz,
-    latent_dim,
-    poly_order,
-    include_sine=False,
-    sine_k=1.0,
-    print_names="False",
-):
-    """
-    Build the SINDy library for a second order system. This is essentially the same as
-    for a first order system, but library terms are also built for the derivatives.
-    """
-    library = [torch.ones(z.shape[0]).cuda()]
-    library_names = ["constant", "constant"]
-
-    z_combined = torch.concat([z, dz], 1)
-
-    for i in range(2 * latent_dim):
-        library.append(z_combined[:, i])
-        library_names.append("z_combined[" + str(i) + "]")
-
-    if poly_order > 1:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                library.append(torch.multiply(z_combined[:, i], z_combined[:, j]))
-                library_names.append(
-                    "z_combined[" + str(i) + "]*" + "z_combined[" + str(j) + "]"
-                )
-
-    if poly_order > 2:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    library.append(
-                        z_combined[:, i] * z_combined[:, j] * z_combined[:, k]
-                    )
-
-    if poly_order > 3:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    for p in range(k, 2 * latent_dim):
-                        library.append(
-                            z_combined[:, i]
-                            * z_combined[:, j]
-                            * z_combined[:, k]
-                            * z_combined[:, p]
-                        )
-
-    if poly_order > 4:
-        for i in range(2 * latent_dim):
-            for j in range(i, 2 * latent_dim):
-                for k in range(j, 2 * latent_dim):
-                    for p in range(k, 2 * latent_dim):
-                        for q in range(p, 2 * latent_dim):
-                            library.append(
-                                z_combined[:, i]
-                                * z_combined[:, j]
-                                * z_combined[:, k]
-                                * z_combined[:, p]
-                                * z_combined[:, q]
-                            )
-
-    if include_sine:
-        for i in range(2 * latent_dim):
-            library.append(torch.sin(sine_k * z_combined[:, i]))
-            library_names.append("sin(z_combined[" + str(i) + "])")
-
-    if print_names == True:
-        print(library_names)
-
-    return torch.stack(library, axis=1)
+    return build_sindy_library(z, poly_order, include_sine=include_sine, dz=dz)
 
 
 def library_size(n, poly_order, use_sine=False, include_constant=True):

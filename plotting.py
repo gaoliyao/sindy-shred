@@ -187,10 +187,10 @@ def plot_reconstruction_comparison(
 def plot_sensor_predictions(
     real_data,
     predicted_data,
-    sensor_locations,
-    sensor_indices,
-    num_train=52,
-    num_pred=250,
+    sensor_locations=None,
+    sensor_indices=None,
+    num_context=0,
+    num_pred=None,
     rows=4,
     cols=4,
     figsize=None,
@@ -203,15 +203,16 @@ def plot_sensor_predictions(
     real_data : array-like
         Real sensor data (n_samples, n_features).
     predicted_data : array-like
-        Predicted sensor data.
-    sensor_locations : array-like
-        Array of sensor location indices.
-    sensor_indices : list
-        Indices into sensor_locations to plot.
-    num_train : int, optional
-        Number of training samples (for vertical line). Default is 52.
+        Predicted sensor data, same shape as real_data.
+    sensor_locations : array-like, optional
+        Array of feature column indices to plot. If None, uses first rows*cols columns.
+    sensor_indices : list, optional
+        Indices into sensor_locations to plot. If None, uses range(len(sensor_locations)).
+    num_context : int, optional
+        Number of context samples before prediction starts (for vertical line).
+        Set to 0 to compare aligned arrays with no context. Default is 0.
     num_pred : int, optional
-        Number of prediction samples. Default is 250.
+        Number of prediction samples. If None, uses len(predicted_data) - num_context.
     rows : int, optional
         Number of rows in grid. Default is 4.
     cols : int, optional
@@ -226,6 +227,20 @@ def plot_sensor_predictions(
     fig : matplotlib.figure.Figure
     axes : array of matplotlib.axes.Axes
     """
+    n_features = real_data.shape[1]
+
+    # Default sensor_locations to first N columns
+    if sensor_locations is None:
+        sensor_locations = np.arange(min(rows * cols, n_features))
+
+    # Default sensor_indices to all locations
+    if sensor_indices is None:
+        sensor_indices = list(range(len(sensor_locations)))
+
+    # Default num_pred to remaining samples after context
+    if num_pred is None:
+        num_pred = len(predicted_data) - num_context
+
     if figsize is None:
         figsize = (3 * cols, 2 * rows)
 
@@ -239,24 +254,27 @@ def plot_sensor_predictions(
 
         sensor = sensor_locations[sensor_idx]
 
-        # Real data for training + prediction period
-        sensor_real = real_data[: num_train + num_pred, sensor]
+        # Real data for context + prediction period
+        sensor_real = real_data[: num_context + num_pred, sensor]
 
-        # Prediction data
-        sensor_pred = predicted_data[num_train : num_train + num_pred, sensor]
+        # Prediction data (starts after context)
+        sensor_pred = predicted_data[num_context : num_context + num_pred, sensor]
 
         axes[i].plot(
-            np.arange(num_train + num_pred), sensor_real, color="blue", linewidth=2
+            np.arange(num_context + num_pred), sensor_real, color="blue", linewidth=2
         )
         axes[i].plot(
-            np.arange(num_train, num_train + num_pred),
+            np.arange(num_context, num_context + num_pred),
             sensor_pred,
             color="red",
             linestyle="--",
             linewidth=2,
         )
         axes[i].set_title(f"Sensor {sensor_idx}", fontsize=10)
-        axes[i].axvline(x=num_train, color="gray", linestyle=":", linewidth=1)
+
+        # Only draw vertical line if there's context
+        if num_context > 0:
+            axes[i].axvline(x=num_context, color="gray", linestyle=":", linewidth=1)
 
     # Remove unused subplots
     for i in range(num_sensors, rows * cols):
@@ -276,7 +294,7 @@ def plot_sensor_predictions(
     fig.tight_layout()
 
     if save_path:
-        fig.savefig(save_path, format="pdf", bbox_inches="tight", dpi=300)
+        fig.savefig(save_path, bbox_inches="tight", dpi=300)
 
     return fig, axes
 
@@ -346,3 +364,156 @@ def plot_training_loss(validation_errors, figsize=(8, 4)):
     ax.grid(True, alpha=0.3)
 
     return fig, ax
+
+
+def plot_timeseries_comparison(
+    real_data,
+    predicted_data,
+    timesteps,
+    figsize=None,
+):
+    """Plot comparison between real and predicted 1D time series data.
+
+    Parameters
+    ----------
+    real_data : array-like
+        Ground truth data (n_samples, n_features).
+    predicted_data : array-like
+        Predicted/reconstructed data.
+    timesteps : list
+        List of timestep indices to visualize.
+    figsize : tuple, optional
+        Figure size.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : array of matplotlib.axes.Axes
+    """
+    num_plots = len(timesteps)
+    n_features = real_data.shape[1]
+
+    if figsize is None:
+        figsize = (4 * num_plots, 4)
+
+    fig, axes = plt.subplots(2, num_plots, figsize=figsize, sharex=True, sharey=True)
+    if num_plots == 1:
+        axes = axes.reshape(-1, 1)
+
+    for i, t in enumerate(timesteps):
+        # Real data
+        axes[0, i].bar(range(n_features), real_data[t, :], color="steelblue", alpha=0.7)
+        axes[0, i].set_title(f"Real (t={t})")
+        if i == 0:
+            axes[0, i].set_ylabel("Value")
+
+        # Predicted data
+        axes[1, i].bar(range(n_features), predicted_data[t, :], color="coral", alpha=0.7)
+        axes[1, i].set_title(f"Predicted (t={t})")
+        axes[1, i].set_xlabel("Feature")
+        if i == 0:
+            axes[1, i].set_ylabel("Value")
+
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_spatiotemporal_1d(
+    data,
+    time=None,
+    space=None,
+    title=None,
+    figsize=(10, 4),
+    **kwargs
+):
+    """Plot 1D spatio-temporal data as a heatmap.
+
+    Useful for visualizing toy data systems where the spatial dimension
+    is 1D (e.g., mixed oscillator systems).
+
+    Parameters
+    ----------
+    data : array-like
+        2D data array, shape (n_time, n_space) or (n_space, n_time).
+    time : array-like, optional
+        Time coordinates for x-axis.
+    space : array-like, optional
+        Space coordinates for y-axis.
+    title : str, optional
+        Plot title.
+    figsize : tuple, optional
+        Figure size. Default is (10, 4).
+    **kwargs
+        Additional arguments passed to pcolormesh.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Handle data orientation (expect space x time for pcolormesh)
+    if data.shape[0] > data.shape[1]:
+        # Assume time x space, transpose
+        data = data.T
+
+    if time is None:
+        time = np.arange(data.shape[1])
+    if space is None:
+        space = np.arange(data.shape[0])
+
+    default_kwargs = {
+        "cmap": "RdBu_r",
+        "rasterized": True,
+        "vmin": -3,
+        "vmax": 3,
+    }
+    default_kwargs.update(kwargs)
+
+    mesh = ax.pcolormesh(time, space, data, **default_kwargs)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Space")
+    if title:
+        ax.set_title(title)
+
+    fig.colorbar(mesh, ax=ax)
+    fig.tight_layout()
+
+    return fig, ax
+
+
+def plot_comparison(
+    real,
+    predicted,
+    timesteps,
+    data_type="2d",
+    **kwargs
+):
+    """Unified comparison plot for any data type.
+
+    Parameters
+    ----------
+    real : array-like
+        Ground truth data (n_samples, n_features).
+    predicted : array-like
+        Predicted/reconstructed data.
+    timesteps : list
+        List of timestep indices to visualize.
+    data_type : str, optional
+        "2d" for spatial grids (SST-like), "1d" for time series arrays.
+        Default is "2d".
+    **kwargs
+        Additional arguments passed to the underlying plot function.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : array of matplotlib.axes.Axes
+    """
+    if data_type == "2d":
+        return plot_reconstruction_comparison(real, predicted, timesteps, **kwargs)
+    elif data_type == "1d":
+        return plot_timeseries_comparison(real, predicted, timesteps, **kwargs)
+    else:
+        raise ValueError(f"data_type must be '2d' or '1d', got '{data_type}'")
