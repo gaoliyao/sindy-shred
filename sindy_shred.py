@@ -556,6 +556,9 @@ class SINDySHRED:
         test_steps=None,
         divergence_threshold=1e6,
         verbose=None,
+        adaptive=True,
+        scale_factor=0.3,
+        n_thresholds=10,
     ):
         """Automatically select SINDy threshold via model evaluation.
 
@@ -566,7 +569,8 @@ class SINDySHRED:
         Parameters
         ----------
         thresholds : array-like, optional
-            Candidate threshold values to test. If None, uses a default range.
+            Candidate threshold values to test. If None and adaptive=False, uses a
+            default range. Ignored if adaptive=True.
         metric : str, optional
             Selection criterion. Options:
             - "sparsity_stable": Sparsest stable model (default)
@@ -578,6 +582,17 @@ class SINDySHRED:
             Max allowed value before model is considered divergent. Default is 1e6.
         verbose : bool, optional
             Print progress. If None, uses class verbose setting.
+        adaptive : bool, optional
+            If True, uses a nonparametric approach to determine thresholds:
+            1. First fits a least-squares solution (threshold=0)
+            2. Computes max_threshold = scale_factor * max(|coefficients|)
+            3. Generates n_thresholds evenly spaced values from 0 to max_threshold
+            Default is True.
+        scale_factor : float, optional
+            Fraction of max coefficient magnitude to use as max threshold when
+            adaptive=True. Default is 0.3.
+        n_thresholds : int, optional
+            Number of threshold values to test when adaptive=True. Default is 10.
 
         Returns
         -------
@@ -595,18 +610,43 @@ class SINDySHRED:
         if verbose is None:
             verbose = self._verbose
 
-        if thresholds is None:
-            thresholds = np.array([0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5])
-
-        if test_steps is None:
-            test_steps = self._test_length if self._test_length else 100
-
         if self._gru_outs is None:
             # Need to get normalized latent space first
             gru_outs = self.gru_normalize(data_type="train")
             x_train = gru_outs.detach().cpu().numpy()
         else:
             x_train = self._gru_outs
+
+        if adaptive:
+            # Nonparametric approach: determine thresholds from least-squares solution
+            if verbose:
+                print("Computing least-squares solution to determine threshold range...")
+
+            # Fit with threshold=0 to get the full least-squares solution
+            ls_model = ps.SINDy(
+                optimizer=ps.STLSQ(threshold=0.0, alpha=0.05),
+                differentiation_method=self._differentiation_method,
+                feature_library=ps.PolynomialLibrary(degree=self._poly_order),
+            )
+            ls_model.fit(x_train, t=self._dt)
+
+            # Get max absolute coefficient value
+            coeffs = ls_model.coefficients()
+            max_coeff = np.max(np.abs(coeffs))
+            max_threshold = scale_factor * max_coeff
+
+            # Generate evenly spaced thresholds from 0 to max_threshold
+            thresholds = np.linspace(0, max_threshold, n_thresholds)
+
+            if verbose:
+                print(f"Max |coefficient|: {max_coeff:.4f}")
+                print(f"Max threshold (scale_factor={scale_factor}): {max_threshold:.4f}")
+                print(f"Testing {n_thresholds} thresholds: {thresholds}")
+        elif thresholds is None:
+            thresholds = np.array([0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5])
+
+        if test_steps is None:
+            test_steps = self._test_length if self._test_length else 100
 
         # Get test latent space for validation
         gru_test = self.gru_normalize(data_type="test")
