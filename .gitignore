@@ -3,6 +3,8 @@
 __pycache__
 *.mat
 Data/SST_data.mat
+Data/*
+!Data/.gitkeep
 
 # Results folder - ignore generated files but keep structure
 results/**/*.npy
