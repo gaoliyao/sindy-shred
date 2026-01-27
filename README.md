@@ -1,10 +1,11 @@
 # SINDy-SHRED
+# SINDy-SHRED
 
 **Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder Networks**
 
 [![arXiv](https://img.shields.io/badge/arXiv-2501.13329-b31b1b.svg)](https://arxiv.org/abs/2501.13329)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![YouTube](https://img.shields.io/badge/YouTube-Watch-red?logo=youtube)](https://www.youtube.com/watch?v=UYDfWJxvKGw)
 [![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
 [![GitHub](https://img.shields.io/badge/GitHub-sindy--shred-blue.svg)](https://github.com/gaoliyao/sindy-shred)
@@ -42,16 +43,61 @@ SINDy-SHRED combines **sparse dynamics identification** with **shallow recurrent
 
 ## Installation
 
-### Dependencies
+### Quick Start (Recommended)
 
-- Python 3.8+
-- PyTorch
-- NumPy
-- SciPy
-- Matplotlib
-- scikit-learn
-- PySINDy
-- seaborn
+```bash
+git clone https://github.com/gaoliyao/sindy-shred.git
+cd sindy-shred
+pip install .                  # Core dependencies
+pip install ".[notebooks]"     # Include JupyterLab for notebooks
+```
+
+### Alternative Methods
+
+<details>
+<summary><b>Using uv (faster)</b></summary>
+
+```bash
+git clone https://github.com/gaoliyao/sindy-shred.git
+cd sindy-shred
+uv venv sindyshred && source sindyshred/bin/activate
+uv pip install ".[notebooks]"
+```
+
+</details>
+
+<details>
+<summary><b>Using requirements.txt</b></summary>
+
+```bash
+git clone https://github.com/gaoliyao/sindy-shred.git
+cd sindy-shred
+python -m venv sindyshred
+source sindyshred/bin/activate  # Linux/macOS
+# sindyshred\Scripts\activate   # Windows
+pip install -r requirements.txt
+```
+
+</details>
+
+<details>
+<summary><b>Using conda</b></summary>
+
+```bash
+git clone https://github.com/gaoliyao/sindy-shred.git
+cd sindy-shred
+conda create -n sindyshred python=3.12
+conda activate sindyshred
+pip install ".[notebooks]"
+```
+
+</details>
+
+### Verify Installation
+
+```bash
+python -c "import torch; import pysindy; import sindy_shred; print('Installation successful!')"
+```
 
 ### Dataset
 
