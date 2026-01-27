@@ -198,14 +198,10 @@ class SINDySHRED:
         """
         if mode is None:
             mode = "forecast"
-        # if sample_size is None:
-        #     sample_size = int(self._n_time_dim * 0.6)
-        # else:
-        #     sample_size = self._train_length
 
         if mode == "forecast":
             if test_length is None:
-                test_length = self._n_time_dim - (train_length + validate_length)
+                test_length = self._n_time_dim - (train_length + validate_length + lags)
 
             train_ind = np.arange(0, train_length)
 
