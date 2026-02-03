@@ -1,5 +1,4 @@
 """SINDy-SHRED: Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder.
-"""SINDy-SHRED: Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder.
 
 This module provides the core neural network components for the SINDy-SHRED architecture,
 which combines recurrent neural networks with sparse dynamics identification for
