@@ -426,7 +426,7 @@ class SINDySHRED:
                 differentiation_method=self._differentiation_method,
                 feature_library=ps.PolynomialLibrary(degree=self._poly_order),
             )
-            model.fit(z, t=self._dt, ensemble=True)
+            model.fit(z, t=self._dt)
             self._model = model
 
             if self._verbose:

@@ -1,6 +1,9 @@
 .idea
 .ipynb_checkpoints
 __pycache__
+.venv/
+*.egg-info/
+synthetic_data_analysis_detailed.py
 *.mat
 Data/SST_data.mat
 Data/*
