@@ -386,7 +386,7 @@ class SINDySHRED:
         self._shred = shred
 
     def sindy_identify(
-        self, threshold, differentiation_method="finite", plot_result=True
+        self, threshold, differentiation_method="finite", plot_result=True, save_path=None
     ):
         """Post-hoc model discovery with SINDy using SHRED latent space trajectories.
 
@@ -399,6 +399,9 @@ class SINDySHRED:
         :type differentiation_method: str
         :param plot_result: Flag for plotting discovered model
         :type plot_result: bool
+        :param save_path: Path to save the plot (without extension). If provided,
+            saves both .pdf and .png versions. Example: "results/latent_comparison"
+        :type save_path: str or None
         """
 
         # TODO: allow users to pass any differentiation method
@@ -423,7 +426,7 @@ class SINDySHRED:
                 differentiation_method=self._differentiation_method,
                 feature_library=ps.PolynomialLibrary(degree=self._poly_order),
             )
-            model.fit(z, t=self._dt, ensemble=True)
+            model.fit(z, t=self._dt)
             self._model = model
 
             if self._verbose:
@@ -431,7 +434,7 @@ class SINDySHRED:
                 model.print()
 
             # Plot the discovered SINDy model
-            if plot_result:
+            if plot_result or save_path:
                 self.sindy_simulate(z)
                 x_sim = self._x_sim
                 t_train = np.arange(0, len(z) * self._dt, self._dt)
@@ -447,7 +450,13 @@ class SINDySHRED:
                     if i == self._latent_dim - 1:
                         ax[i].set_xlabel("time (n steps)")
                         ax[i].legend()
-                plt.show()
+                if save_path:
+                    fig.savefig(f"{save_path}.pdf", bbox_inches="tight", dpi=300)
+                    fig.savefig(f"{save_path}.png", bbox_inches="tight", dpi=300)
+                if plot_result:
+                    plt.show()
+                else:
+                    plt.close(fig)
 
         elif self._ode_order == 2:
             # 2nd order ODE: z'' = f(z, z')
@@ -491,7 +500,7 @@ class SINDySHRED:
                 model.print()
 
             # Plot the discovered SINDy model
-            if plot_result:
+            if plot_result or save_path:
                 self.sindy_simulate(z)
                 x_sim = self._x_sim
                 t_train = np.arange(0, len(z_trimmed) * self._dt, self._dt)
@@ -512,7 +521,13 @@ class SINDySHRED:
                     ax[self._latent_dim + i].set_ylabel(rf"$\dot{{z}}_{{{i}}}$ (-)")
                 ax[-1].set_xlabel("time (n steps)")
                 plt.tight_layout()
-                plt.show()
+                if save_path:
+                    fig.savefig(f"{save_path}.pdf", bbox_inches="tight", dpi=300)
+                    fig.savefig(f"{save_path}.png", bbox_inches="tight", dpi=300)
+                if plot_result:
+                    plt.show()
+                else:
+                    plt.close(fig)
         else:
             raise ValueError(f"ode_order must be 1 or 2, got {self._ode_order}")
 
