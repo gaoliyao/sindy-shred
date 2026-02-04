@@ -113,6 +113,29 @@ A ready-to-run notebook is available on Google Colab:
 
 [![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
 
+### Run Locally (Standalone Script)
+
+To run the synthetic data example as a standalone Python script:
+
+```bash
+# Clone and setup
+git clone https://github.com/gaoliyao/sindy-shred.git
+cd sindy-shred
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# Install dependencies
+pip install -e .
+
+# Run the synthetic data example
+python synthetic_data_analysis_detailed.py
+```
+
+Results will be saved to `results/synthetic_data/`.
+
 ---
 
 ## Usage
