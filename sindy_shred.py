@@ -127,6 +127,9 @@ class SINDySHRED:
             "thres_epoch": thres_epoch,
         }
 
+        self._gru_outs = None
+        self._differentiation_method = None
+
     @staticmethod
     def relative_error(x_est, x_true):
         """Helper function for calculating the relative error.
@@ -388,7 +391,7 @@ class SINDySHRED:
     def sindy_identify(
         self,
         threshold,
-        differentiation_method="finite",
+        differentiation_method=None,
         plot_result=True,
         save_path=None,
     ):
@@ -410,7 +413,7 @@ class SINDySHRED:
 
         # TODO: allow users to pass any differentiation method
         #   and implement MIOSR option
-        if differentiation_method == "finite":
+        if differentiation_method == "finite" or differentiation_method is None:
             self._differentiation_method = ps.differentiation.FiniteDifference()
         elif differentiation_method == "smoothed finite":
             self._differentiation_method = ps.differentiation.SmoothedFiniteDifference()
@@ -587,6 +590,7 @@ class SINDySHRED:
         n_thresholds=10,
         optimizer=None,
         optimizer_kwargs=None,
+        differentiation_method=None,
     ):
         """Automatically select SINDy threshold via model evaluation.
 
@@ -639,9 +643,14 @@ class SINDySHRED:
             verbose = self._verbose
 
         if optimizer is None:
-            optimizer = ps.STLSQ()
+            optimizer = ps.STLSQ
         if optimizer_kwargs is None:
             optimizer_kwargs = {"alpha": 0.05}
+
+        if differentiation_method == "finite" or differentiation_method is None:
+            self._differentiation_method = ps.differentiation.FiniteDifference()
+        elif differentiation_method == "smoothed finite":
+            self._differentiation_method = ps.differentiation.SmoothedFiniteDifference()
 
         if self._gru_outs is None:
             # Need to get normalized latent space first
@@ -683,11 +692,11 @@ class SINDySHRED:
             thresholds = np.array([0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5])
 
         if test_steps is None:
-            test_steps = self._test_length if self._test_length else 100
+            test_steps = self._train_length if self._train_length else 100
 
-        # Get test latent space for validation
-        gru_test = self.gru_normalize(data_type="test")
-        x_test = gru_test.detach().cpu().numpy()
+        # # Get test latent space for validation
+        # gru_test = self.gru_normalize(data_type="test")
+        # x_test = gru_test.detach().cpu().numpy()
 
         results = {
             "thresholds": thresholds,
@@ -717,7 +726,7 @@ class SINDySHRED:
             # Test stability via forward integration
             try:
                 t_test = np.arange(0, test_steps * self._dt, self._dt)
-                init_cond = x_test[0, :]
+                init_cond = x_train[0, :]
                 x_sim = model.simulate(init_cond, t_test)
 
                 # Check for divergence
