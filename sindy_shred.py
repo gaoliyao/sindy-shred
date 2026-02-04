@@ -585,6 +585,8 @@ class SINDySHRED:
         adaptive=True,
         scale_factor=0.3,
         n_thresholds=10,
+        optimizer=None,
+        optimizer_kwargs=None,
     ):
         """Automatically select SINDy threshold via model evaluation.
 
@@ -636,6 +638,11 @@ class SINDySHRED:
         if verbose is None:
             verbose = self._verbose
 
+        if optimizer is None:
+            optimizer = ps.STLSQ()
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {"alpha": 0.05}
+
         if self._gru_outs is None:
             # Need to get normalized latent space first
             gru_outs = self.gru_normalize(data_type="train")
@@ -652,7 +659,7 @@ class SINDySHRED:
 
             # Fit with threshold=0 to get the full least-squares solution
             ls_model = ps.SINDy(
-                optimizer=ps.STLSQ(threshold=0.0, alpha=0.05),
+                optimizer=optimizer(threshold=0.0, **optimizer_kwargs),
                 differentiation_method=self._differentiation_method,
                 feature_library=ps.PolynomialLibrary(degree=self._poly_order),
             )
@@ -697,7 +704,7 @@ class SINDySHRED:
 
             # Fit SINDy with this threshold
             model = ps.SINDy(
-                optimizer=ps.STLSQ(threshold=thresh, alpha=0.05),
+                optimizer=optimizer(threshold=thresh, **optimizer_kwargs),
                 differentiation_method=self._differentiation_method,
                 feature_library=ps.PolynomialLibrary(degree=self._poly_order),
             )
@@ -786,7 +793,7 @@ class SINDySHRED:
                 f"MSE={results['mse'][best_idx]:.4e})"
             )
 
-        # Re-fit with best threshold and store
+        # Re-fit with the best threshold and store
         self.sindy_identify(threshold=best_threshold, plot_result=False)
 
         return best_threshold, results
