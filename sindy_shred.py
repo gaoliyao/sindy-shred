@@ -745,8 +745,8 @@ class SINDySHRED:
                 else:
                     is_stable = True
                     # Compute MSE against test data
-                    n_compare = min(len(x_sim), len(x_test))
-                    mse = np.mean((x_sim[:n_compare] - x_test[:n_compare]) ** 2)
+                    n_compare = min(len(x_sim), len(x_train))
+                    mse = np.mean((x_sim[:n_compare] - x_train[:n_compare]) ** 2)
             except Exception:
                 is_stable = False
                 mse = np.inf
