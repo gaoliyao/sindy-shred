@@ -127,6 +127,9 @@ class SINDySHRED:
             "thres_epoch": thres_epoch,
         }
 
+        self._gru_outs = None
+        self._differentiation_method = None
+
     @staticmethod
     def relative_error(x_est, x_true):
         """Helper function for calculating the relative error.
@@ -386,7 +389,11 @@ class SINDySHRED:
         self._shred = shred
 
     def sindy_identify(
-        self, threshold, differentiation_method="finite", plot_result=True, save_path=None
+        self,
+        threshold,
+        differentiation_method=None,
+        plot_result=True,
+        save_path=None,
     ):
         """Post-hoc model discovery with SINDy using SHRED latent space trajectories.
 
@@ -406,7 +413,7 @@ class SINDySHRED:
 
         # TODO: allow users to pass any differentiation method
         #   and implement MIOSR option
-        if differentiation_method == "finite":
+        if differentiation_method == "finite" or differentiation_method is None:
             self._differentiation_method = ps.differentiation.FiniteDifference()
         elif differentiation_method == "smoothed finite":
             self._differentiation_method = ps.differentiation.SmoothedFiniteDifference()
@@ -443,7 +450,9 @@ class SINDySHRED:
                     ax = [ax]
                 for i in range(self._latent_dim):
                     ax[i].plot(
-                        t_train, gru_outs[:, i].detach().cpu().numpy(), label="SINDy-SHRED"
+                        t_train,
+                        gru_outs[:, i].detach().cpu().numpy(),
+                        label="SINDy-SHRED",
                     )
                     ax[i].plot(t_train, x_sim[:, i], "k--", label="identified model")
                     ax[i].set_ylabel(rf"$z_{{{i}}}$ (-)")
@@ -494,7 +503,9 @@ class SINDySHRED:
             self._model = model
 
             if self._verbose:
-                print("SINDy-derived dynamical equation (2nd order, state-space form):\n")
+                print(
+                    "SINDy-derived dynamical equation (2nd order, state-space form):\n"
+                )
                 print("State: [z_0, ..., z_{n-1}, v_0, ..., v_{n-1}]")
                 print("where v = dz/dt\n")
                 model.print()
@@ -504,7 +515,9 @@ class SINDySHRED:
                 self.sindy_simulate(z)
                 x_sim = self._x_sim
                 t_train = np.arange(0, len(z_trimmed) * self._dt, self._dt)
-                fig, ax = plt.subplots(self._latent_dim * 2, sharex=True, figsize=(8, 2 * self._latent_dim))
+                fig, ax = plt.subplots(
+                    self._latent_dim * 2, sharex=True, figsize=(8, 2 * self._latent_dim)
+                )
                 if self._latent_dim * 2 == 1:
                     ax = [ax]
                 # Plot positions
@@ -517,7 +530,12 @@ class SINDySHRED:
                 # Plot velocities
                 for i in range(self._latent_dim):
                     ax[self._latent_dim + i].plot(t_train, dz[:, i], label="estimated")
-                    ax[self._latent_dim + i].plot(t_train, x_sim[:, self._latent_dim + i], "k--", label="identified model")
+                    ax[self._latent_dim + i].plot(
+                        t_train,
+                        x_sim[:, self._latent_dim + i],
+                        "k--",
+                        label="identified model",
+                    )
                     ax[self._latent_dim + i].set_ylabel(rf"$\dot{{z}}_{{{i}}}$ (-)")
                 ax[-1].set_xlabel("time (n steps)")
                 plt.tight_layout()
@@ -570,6 +588,9 @@ class SINDySHRED:
         adaptive=True,
         scale_factor=0.3,
         n_thresholds=10,
+        optimizer=None,
+        optimizer_kwargs=None,
+        differentiation_method=None,
     ):
         """Automatically select SINDy threshold via model evaluation.
 
@@ -621,6 +642,16 @@ class SINDySHRED:
         if verbose is None:
             verbose = self._verbose
 
+        if optimizer is None:
+            optimizer = ps.STLSQ
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {"alpha": 0.05}
+
+        if differentiation_method == "finite" or differentiation_method is None:
+            self._differentiation_method = ps.differentiation.FiniteDifference()
+        elif differentiation_method == "smoothed finite":
+            self._differentiation_method = ps.differentiation.SmoothedFiniteDifference()
+
         if self._gru_outs is None:
             # Need to get normalized latent space first
             gru_outs = self.gru_normalize(data_type="train")
@@ -631,11 +662,13 @@ class SINDySHRED:
         if adaptive:
             # Nonparametric approach: determine thresholds from least-squares solution
             if verbose:
-                print("Computing least-squares solution to determine threshold range...")
+                print(
+                    "Computing least-squares solution to determine threshold range..."
+                )
 
             # Fit with threshold=0 to get the full least-squares solution
             ls_model = ps.SINDy(
-                optimizer=ps.STLSQ(threshold=0.0, alpha=0.05),
+                optimizer=optimizer(threshold=0.0, **optimizer_kwargs),
                 differentiation_method=self._differentiation_method,
                 feature_library=ps.PolynomialLibrary(degree=self._poly_order),
             )
@@ -651,25 +684,27 @@ class SINDySHRED:
 
             if verbose:
                 print(f"Max |coefficient|: {max_coeff:.4f}")
-                print(f"Max threshold (scale_factor={scale_factor}): {max_threshold:.4f}")
+                print(
+                    f"Max threshold (scale_factor={scale_factor}): {max_threshold:.4f}"
+                )
                 print(f"Testing {n_thresholds} thresholds: {thresholds}")
         elif thresholds is None:
             thresholds = np.array([0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5])
 
         if test_steps is None:
-            test_steps = self._test_length if self._test_length else 100
+            test_steps = self._train_length if self._train_length else 100
 
-        # Get test latent space for validation
-        gru_test = self.gru_normalize(data_type="test")
-        x_test = gru_test.detach().cpu().numpy()
+        # # Get test latent space for validation
+        # gru_test = self.gru_normalize(data_type="test")
+        # x_test = gru_test.detach().cpu().numpy()
 
         results = {
-            'thresholds': thresholds,
-            'sparsity': [],
-            'stable': [],
-            'bic': [],
-            'aic': [],
-            'mse': [],
+            "thresholds": thresholds,
+            "sparsity": [],
+            "stable": [],
+            "bic": [],
+            "aic": [],
+            "mse": [],
         }
 
         for thresh in thresholds:
@@ -678,7 +713,7 @@ class SINDySHRED:
 
             # Fit SINDy with this threshold
             model = ps.SINDy(
-                optimizer=ps.STLSQ(threshold=thresh, alpha=0.05),
+                optimizer=optimizer(threshold=thresh, **optimizer_kwargs),
                 differentiation_method=self._differentiation_method,
                 feature_library=ps.PolynomialLibrary(degree=self._poly_order),
             )
@@ -686,16 +721,18 @@ class SINDySHRED:
 
             # Count nonzero coefficients (sparsity)
             n_nonzero = np.count_nonzero(model.coefficients())
-            results['sparsity'].append(n_nonzero)
+            results["sparsity"].append(n_nonzero)
 
             # Test stability via forward integration
             try:
                 t_test = np.arange(0, test_steps * self._dt, self._dt)
-                init_cond = x_test[0, :]
+                init_cond = x_train[0, :]
                 x_sim = model.simulate(init_cond, t_test)
 
                 # Check for divergence
-                if np.any(np.abs(x_sim) > divergence_threshold) or np.any(np.isnan(x_sim)):
+                if np.any(np.abs(x_sim) > divergence_threshold) or np.any(
+                    np.isnan(x_sim)
+                ):
                     is_stable = False
                     mse = np.inf
                 else:
@@ -707,8 +744,8 @@ class SINDySHRED:
                 is_stable = False
                 mse = np.inf
 
-            results['stable'].append(is_stable)
-            results['mse'].append(mse)
+            results["stable"].append(is_stable)
+            results["mse"].append(mse)
 
             # Compute information criteria (simplified)
             n_samples = len(x_train)
@@ -722,53 +759,57 @@ class SINDySHRED:
                 bic = np.inf
                 aic = np.inf
 
-            results['bic'].append(bic)
-            results['aic'].append(aic)
+            results["bic"].append(bic)
+            results["aic"].append(aic)
 
             if verbose:
                 status = "stable" if is_stable else "DIVERGED"
                 print(f"sparsity={n_nonzero}, {status}, MSE={mse:.4e}")
 
         # Select best model based on metric
-        results['sparsity'] = np.array(results['sparsity'])
-        results['stable'] = np.array(results['stable'])
-        results['bic'] = np.array(results['bic'])
-        results['aic'] = np.array(results['aic'])
-        results['mse'] = np.array(results['mse'])
+        results["sparsity"] = np.array(results["sparsity"])
+        results["stable"] = np.array(results["stable"])
+        results["bic"] = np.array(results["bic"])
+        results["aic"] = np.array(results["aic"])
+        results["mse"] = np.array(results["mse"])
 
-        stable_mask = results['stable']
+        stable_mask = results["stable"]
 
         if not np.any(stable_mask):
             if verbose:
                 print("Warning: No stable models found. Using least divergent.")
-            best_idx = np.argmin(results['mse'])
+            best_idx = np.argmin(results["mse"])
         elif metric == "sparsity_stable":
             # Among stable models, pick the sparsest
             stable_indices = np.where(stable_mask)[0]
-            best_idx = stable_indices[np.argmin(results['sparsity'][stable_mask])]
+            best_idx = stable_indices[np.argmin(results["sparsity"][stable_mask])]
         elif metric == "bic":
             stable_indices = np.where(stable_mask)[0]
-            best_idx = stable_indices[np.argmin(results['bic'][stable_mask])]
+            best_idx = stable_indices[np.argmin(results["bic"][stable_mask])]
         elif metric == "aic":
             stable_indices = np.where(stable_mask)[0]
-            best_idx = stable_indices[np.argmin(results['aic'][stable_mask])]
+            best_idx = stable_indices[np.argmin(results["aic"][stable_mask])]
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
-        results['best_idx'] = best_idx
+        results["best_idx"] = best_idx
         best_threshold = thresholds[best_idx]
 
         if verbose:
-            print(f"\nBest threshold: {best_threshold:.3f} "
-                  f"(sparsity={results['sparsity'][best_idx]}, "
-                  f"MSE={results['mse'][best_idx]:.4e})")
+            print(
+                f"\nBest threshold: {best_threshold:.3f} "
+                f"(sparsity={results['sparsity'][best_idx]}, "
+                f"MSE={results['mse'][best_idx]:.4e})"
+            )
 
-        # Re-fit with best threshold and store
+        # Re-fit with the best threshold and store
         self.sindy_identify(threshold=best_threshold, plot_result=False)
 
         return best_threshold, results
 
-    def sindy_predict(self, t=None, init_cond=None, init_from="test", return_velocity=False):
+    def sindy_predict(
+        self, t=None, init_cond=None, init_from="train", return_velocity=False
+    ):
         """Predict the latent space using the discovered SINDy model.
 
         This function integrates the discovered SINDy model forward in time starting
@@ -788,10 +829,11 @@ class SINDySHRED:
             "train" - use last training point's latent state (for forecasting
                       beyond training data)
         :type init_from: str
-        :param return_velocity: For 2nd order systems, whether to return [z, dz] or just z.
-            Default is False (return only position).
+        :param return_velocity: For 2nd order systems, whether to return [z, dz] or
+            just z. Default is False (return only position).
         :type return_velocity: bool
-        :return: Predicted latent space trajectories. For 1st order, shape (n_times, latent_dim).
+        :return: Predicted latent space trajectories.
+            For 1st order, shape (n_times, latent_dim).
             For 2nd order with return_velocity=False, shape (n_times, latent_dim).
             For 2nd order with return_velocity=True, shape (n_times, 2*latent_dim).
         :rtype: numpy.ndarray
@@ -807,10 +849,14 @@ class SINDySHRED:
             if init_cond is None:
                 init_cond = np.zeros(self._latent_dim)
                 if init_from == "test":
-                    gru_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
+                    gru_test_np = (
+                        self.gru_normalize(data_type="test").detach().cpu().numpy()
+                    )
                     init_cond[: self._latent_dim] = gru_test_np[0, :]
                 elif init_from == "train":
-                    gru_train_np = self.gru_normalize(data_type="train").detach().cpu().numpy()
+                    gru_train_np = (
+                        self.gru_normalize(data_type="train").detach().cpu().numpy()
+                    )
                     init_cond[: self._latent_dim] = gru_train_np[-1, :]
                 else:
                     raise ValueError(
@@ -825,7 +871,9 @@ class SINDySHRED:
             if init_cond is None:
                 if init_from == "test":
                     # Get test data and estimate velocity
-                    gru_test_np = self.gru_normalize(data_type="test").detach().cpu().numpy()
+                    gru_test_np = (
+                        self.gru_normalize(data_type="test").detach().cpu().numpy()
+                    )
                     dz_test, z_test = self.estimate_velocity(gru_test_np, self._dt)
                     init_z = z_test[0, :]
                     init_dz = dz_test[0, :]
@@ -846,7 +894,7 @@ class SINDySHRED:
                 return x_predict
             else:
                 # Return only position (first latent_dim columns)
-                return x_predict[:, :self._latent_dim]
+                return x_predict[:, : self._latent_dim]
         else:
             raise ValueError(f"ode_order must be 1 or 2, got {self._ode_order}")
 
@@ -970,7 +1018,9 @@ class SINDySHRED:
         elif data_type == "test":
             data = self._test_data
         else:
-            raise ValueError(f"data_type must be 'train', 'validate', or 'test', got '{data_type}'")
+            raise ValueError(
+                f"data_type must be 'train', 'validate', or 'test', got '{data_type}'"
+            )
 
         # Get reconstructions from SHRED
         recons_scaled = self._shred(data.X).detach().cpu().numpy()
@@ -981,7 +1031,7 @@ class SINDySHRED:
             # Inverse transform to original scale
             return self._scaler.inverse_transform(recons_scaled)
 
-    def forecast(self, n_steps=None, init_from="test", return_scaled=False):
+    def forecast(self, n_steps=None, init_from="train", return_scaled=False):
         """Forecast future states using the discovered SINDy model.
 
         This is a convenience method that combines sindy_predict() and shred_decode()
@@ -993,7 +1043,7 @@ class SINDySHRED:
             Number of time steps to forecast. If None, uses test length.
         init_from : str, optional
             Where to get initial condition. "test" uses first test point,
-            "train" uses last training point. Default is "test".
+            "train" uses last training point. Default is "train".
         return_scaled : bool, optional
             If True, return scaled (0-1) values. If False, return in original scale.
             Default is False.

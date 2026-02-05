@@ -155,13 +155,21 @@ class SINDy_SHRED_net(torch.nn.Module):
         l1=350,
         l2=400,
         dropout=0.0,
-        library_dim=10,
-        poly_order=3,
+        library_dim=None,
+        poly_order=None,
         include_sine=False,
-        dt=0.03,
+        dt=None,
         device=None,
         multi_step=None,
     ):
+        # Check that necessary information was supplied
+        if dt is None:
+            raise ValueError("A `dt` value must be provided.")
+        if library_dim is None:
+            raise ValueError("A `library_dim` value must be provided.")
+        if poly_order is None:
+            raise ValueError("A `poly_order` value must be provided.")
+
         if device is None:
             device = get_device()
         self.device = device
