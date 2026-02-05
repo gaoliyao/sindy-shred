@@ -625,6 +625,13 @@ class SINDySHRED:
             adaptive=True. Default is 0.3.
         n_thresholds : int, optional
             Number of threshold values to test when adaptive=True. Default is 10.
+        optimizer : callable, optional
+            Function to use in SINDy step. Default is STLSQ.
+        optimizer_kwargs : dict, optional
+            Arguments to pass to optimizer.
+        differentiation_method : callable, optional
+            Differentiation method to use in the SINDy step. Default is
+            FiniteDifference.
 
         Returns
         -------
