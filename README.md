@@ -1,4 +1,49 @@
-# SINDy-SHRED
+# After your existing BP computation, add this:
+
+# Route A: Recover mu using P-Brownian increments
+delta_BP = np.diff(BP)  # ΔB^P_i
+delta_X = np.diff(S)    # ΔX_i
+delta_sigma_pred = np.diff(sigma_pred)
+
+# Compute mu estimates at each point
+mu_hat_points = (delta_X - sigma_pred[:-1] * delta_BP - 0.5*sigma_pred[:-1]*delta_sigma_pred*(delta_BP**2 - dt)) / dt
+
+# SINDy on functions to recover mu(x)
+# Create feature library for mu (e.g., polynomial)
+X_points = S[:-1].reshape(-1, 1)  # X_ti values
+
+mu_model = ps.SINDy(
+    optimizer=ps.STLSQ(threshold=0.065, alpha=0.05),
+    feature_library=ps.PolynomialLibrary(degree=2)
+)
+
+# Fit mu model: mu_hat = Θ_mu(X) * c
+mu_model.fit(X_points, t[:-1], x_dot=mu_hat_points.reshape(-1, 1))
+
+print("Recovered mu model:")
+print(mu_model.equations())
+
+# Evaluate recovered mu on the full trajectory
+mu_recovered = mu_model.predict(S.reshape(-1, 1)).flatten()
+
+# Compare with exact
+plt.figure(figsize=(10, 6))
+plt.plot(S, mu_exact, label="Exact μ(S)", linewidth=2)
+plt.plot(S, mu_recovered, label="Recovered μ(S) - Route A", linewidth=2, linestyle='--')
+plt.xlabel("S")
+plt.ylabel("μ(S)")
+plt.title("Route A: μ Recovery via P-Brownian Motion")
+plt.legend()
+plt.show()
+
+plt.figure(figsize=(10, 6))
+plt.plot(mu_exact, label="Exact μ(S)", linewidth=2)
+plt.plot(mu_recovered, label="Recovered μ(S) - Route A", linewidth=2, linestyle='--')
+plt.xlabel("t")
+plt.ylabel("μ(S_t)")
+plt.title("Route A: μ Recovery via P-Brownian Motion")
+plt.legend()
+plt.show()# SINDy-SHRED
 # SINDy-SHRED
 
 **Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder Networks**
@@ -24,6 +69,7 @@ SINDy-SHRED combines **sparse dynamics identification** with **shallow recurrent
 - **Post-hoc SINDy discovery** extracts symbolic governing equations from learned latent dynamics
 - **Automatic threshold tuning** via nonparametric coefficient-based search
 - **Support for 1st and 2nd order ODEs** (z' = f(z) and z'' = f(z, z'))
+- **Stochastic SINDy** identifies drift and diffusion from SDE latent dynamics (dz = mu(z)dt + sigma(z)dW)
 
 **Applications:**
 
@@ -187,6 +233,17 @@ forecast = model.forecast(n_steps=100)
 best_threshold, results = model.auto_tune_threshold(adaptive=True)
 ```
 
+### Stochastic SINDy
+
+For systems with stochastic forcing, identify both drift and diffusion in the latent space:
+
+```python
+# After fitting the model...
+model.stochastic_sindy_identify(method="girsanov", plot_result=True)
+```
+
+> Requires `iisignature`: `pip install --no-build-isolation iisignature`
+
 ### Low-Level API
 
 For finer control over training and inference:
@@ -254,6 +311,8 @@ physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 
 | Notebook | Description |
 |----------|-------------|
+| `sde_example.ipynb` | Stochastic differential equation (Ornstein-Uhlenbeck) |
+| `second_order_ode_example.ipynb` | Second-order ODE systems |
 | `sst_sindy_shred_refactor.ipynb` | Sea Surface Temperature with high-level API |
 | `sst_sindy_shred.ipynb` | Sea Surface Temperature with low-level API |
 | `synthetic_data_sindy_shred_refactor.ipynb` | FitzHugh-Nagumo synthetic data with high-level API |
@@ -270,6 +329,7 @@ physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 | `sindy_shred.py` | High-level `SINDySHRED` class for end-to-end workflows |
 | `sindy_shred_net.py` | Core `SINDy_SHRED_net` neural network and training functions |
 | `sindy.py` | SINDy library functions for sparse dynamics identification |
+| `stochastic_sindy.py` | Stochastic SINDy for SDE identification (drift + diffusion) |
 | `plotting.py` | Visualization utilities for latent space and predictions |
 | `processdata.py` | Data loading and preprocessing utilities |
 | `utils.py` | Helper functions (device selection, datasets) |

@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import warnings
 
 from utils import get_device, TimeSeriesDataset
+from stochastic_sindy import StochasticSINDy
 
 warnings.simplefilter("ignore", UserWarning)
 
@@ -1077,6 +1078,112 @@ class SINDySHRED:
             return forecast_scaled
         else:
             return self._scaler.inverse_transform(forecast_scaled)
+
+    # ------------------------------------------------------------------
+    # Stochastic SINDy methods
+    # ------------------------------------------------------------------
+
+    def stochastic_sindy_identify(
+        self,
+        mu_degree=None,
+        sigma_degree=None,
+        method="mle",
+        plot_result=True,
+        save_path=None,
+        **kwargs,
+    ):
+        """Identify stochastic dynamics dz = mu(z)dt + sigma(z)dW in latent space.
+
+        Uses the SHRED GRU latent trajectories and fits a StochasticSINDy model
+        to discover both drift mu(z) and diffusion sigma(z).
+
+        Parameters
+        ----------
+        mu_degree : int, optional
+            Polynomial degree for drift. Defaults to poly_order.
+        sigma_degree : int, optional
+            Polynomial degree for diffusion. Defaults to poly_order.
+        method : str
+            'mle' (maximum likelihood) or 'qv' (quadratic variation).
+        plot_result : bool
+            If True, plot actual vs simulated latent trajectories.
+        save_path : str or None
+            Path to save plot (without extension).
+        **kwargs
+            Passed to StochasticSINDy constructor (e.g. mu_regularization,
+            sigma_regularization, sigma_threshold).
+        """
+        if mu_degree is None:
+            mu_degree = self._poly_order
+        if sigma_degree is None:
+            sigma_degree = self._poly_order
+
+        if self._train_data is None:
+            raise ValueError("Call `fit` before stochastic identification.")
+
+        gru_outs = self.gru_normalize(data_type="train")
+        z = gru_outs.detach().cpu().numpy()
+        self._gru_outs = z
+
+        sde_model = StochasticSINDy(
+            mu_degree=mu_degree,
+            sigma_degree=sigma_degree,
+            method=method,
+            **kwargs,
+        )
+        sde_model.fit(z, self._dt)
+        self._stochastic_model = sde_model
+
+        if self._verbose:
+            print("Stochastic SINDy-derived dynamics:\n")
+            sde_model.print_equations()
+
+        if plot_result or save_path:
+            t_train = np.arange(0, len(z) * self._dt, self._dt)
+
+            # Evaluate learned mu and sigma at the actual latent trajectory
+            mu_recovered = sde_model.predict_mu(z)
+            sigma_recovered = sde_model.predict_sigma(z)
+            if mu_recovered.ndim == 1:
+                mu_recovered = mu_recovered.reshape(-1, 1)
+                sigma_recovered = sigma_recovered.reshape(-1, 1)
+
+            n_rows = self._latent_dim
+            fig, ax = plt.subplots(n_rows, 3, figsize=(15, 3 * n_rows))
+            if n_rows == 1:
+                ax = ax.reshape(1, -1)
+
+            for i in range(self._latent_dim):
+                # Left: latent trajectory z_i(t)
+                ax[i, 0].plot(t_train, z[:, i], "b-", linewidth=1)
+                ax[i, 0].set_ylabel(rf"$z_{{{i}}}$")
+                ax[i, 0].set_title("Latent trajectory" if i == 0 else "")
+
+                # Middle: recovered mu(z) along trajectory
+                ax[i, 1].plot(t_train, mu_recovered[:, i], "r-", label=r"Recovered $\mu(z)$", linewidth=1)
+                ax[i, 1].set_ylabel(rf"$\mu_{{{i}}}(z)$")
+                ax[i, 1].set_title("Drift" if i == 0 else "")
+                ax[i, 1].legend()
+
+                # Right: recovered sigma(z) along trajectory
+                ax[i, 2].plot(t_train, sigma_recovered[:, i], "r-", label=r"Recovered $\sigma(z)$", linewidth=1)
+                ax[i, 2].set_ylabel(rf"$\sigma_{{{i}}}(z)$")
+                ax[i, 2].set_title("Diffusion" if i == 0 else "")
+                ax[i, 2].legend()
+
+                if i == self._latent_dim - 1:
+                    ax[i, 0].set_xlabel("time")
+                    ax[i, 1].set_xlabel("time")
+                    ax[i, 2].set_xlabel("time")
+
+            plt.tight_layout()
+            if save_path:
+                fig.savefig(f"{save_path}.pdf", bbox_inches="tight", dpi=300)
+                fig.savefig(f"{save_path}.png", bbox_inches="tight", dpi=300)
+            if plot_result:
+                plt.show()
+            else:
+                plt.close(fig)
 
     # Aliases for clearer API
     predict_latent = sindy_predict
