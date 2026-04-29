@@ -814,10 +814,12 @@ class SINDySHRED:
             best_idx = stable_indices[np.argmin(results["sparsity"][stable_mask])]
         elif metric == "bic":
             stable_indices = np.where(stable_mask)[0]
-            best_idx = stable_indices[np.argmin(results["bic"][stable_mask])]
+            sparse_indicies = np.where(results["sparsity"] < self._latent_dim)
+            best_idx = stable_indices[np.argmin(results["bic"][stable_mask & sparse_indicies])]
         elif metric == "aic":
             stable_indices = np.where(stable_mask)[0]
-            best_idx = stable_indices[np.argmin(results["aic"][stable_mask])]
+            sparse_indicies = np.where(results["sparsity"] < self._latent_dim)
+            best_idx = stable_indices[np.argmin(results["aic"][stable_mask & sparse_indicies])]
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
