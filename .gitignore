@@ -7,14 +7,15 @@ __pycache__
 Data/SST_data.mat
 Data/*
 !Data/.gitkeep
+.DS_Store
 
 # Results folder - ignore generated files but keep structure
-results/**/*.npy
-results/**/*.pt
-results/**/*.pdf
-results/**/*.png
-results/**/*.txt
-!results/**/.gitkeep
-results/**
+notebooks/results/**/*.npy
+notebooks/results/**/*.pt
+notebooks/results/**/*.pdf
+notebooks/results/**/*.png
+notebooks/results/**/*.txt
+!notebooks.results/**/.gitkeep
+notebooks/results/**
 archive/**
 devs/**

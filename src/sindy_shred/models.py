@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
-from utils import get_device
+from .utils import get_device
 
 device = get_device()
 

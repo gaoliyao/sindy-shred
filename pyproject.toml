@@ -1,12 +1,13 @@
 [project]
-name = "sindy-shred"
+name = "sindy_shred"
 version = "0.1.0"
 description = "Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder Networks"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
-    { name = "Mars Liyao Gao" }
+    {name = "Mars Liyao Gao"},
+    {name = "Karl Lapo"},
 ]
 keywords = ["sindy", "shred", "dynamics", "machine-learning", "pytorch"]
 
@@ -26,3 +27,6 @@ notebooks = ["jupyterlab>=4.0"]
 [project.urls]
 Homepage = "https://github.com/gaoliyao/sindy-shred"
 Paper = "https://arxiv.org/abs/2501.13329"
+
+[tool.setuptools.packages.find]
+where = ["src"]

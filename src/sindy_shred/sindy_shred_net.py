@@ -20,8 +20,8 @@ fit
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
-from sindy import sindy_library_torch, e_sindy_library_torch
-from utils import get_device
+from .sindy import e_sindy_library_torch
+from .utils import get_device
 
 device = get_device()
 

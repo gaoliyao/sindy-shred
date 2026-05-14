@@ -2,26 +2,26 @@
 # coding: utf-8
 
 # # SINDy-SHRED: Synthetic Data Example
-# 
+#
 # This notebook demonstrates SINDy-SHRED on a synthetic toy dataset using the `SINDySHRED` class. The class handles data preprocessing, model training, and post-hoc SINDy discovery automatically.
-# 
+#
 # ## Overview
-# 
+#
 # **SHRED** (SHallow REcurrent Decoder) models combine a recurrent layer (GRU) with a shallow decoder network to reconstruct high-dimensional spatio-temporal fields from sensor measurements.
-# 
+#
 # **SINDy-SHRED** extends this by integrating Sparse Identification of Nonlinear Dynamics (SINDy) to learn interpretable governing equations:
-# 
+#
 # $$\dot{z} = \Theta(z) \xi$$
-# 
+#
 # ## Synthetic Data
-# 
+#
 # The synthetic data uses the **FitzHugh-Nagumo Model** with spatially delayed copies:
-# 
+#
 # $$\dot{v} = v - \frac{1}{3}v^3 - w + I_{ext}$$
 # $$\dot{w} = \frac{1}{\tau}(v + a - bw)$$
-# 
+#
 # ## Notebook Structure
-# 
+#
 # 1. Setup and Imports
 # 2. Data Generation
 # 3. Model Configuration and Training
@@ -52,7 +52,7 @@ import plotting
 warnings.filterwarnings("ignore")
 
 # Create results directory
-RESULTS_DIR = "results/synthetic_data"
+RESULTS_DIR = "../results/synthetic_data"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 print(f"Results will be saved to: {RESULTS_DIR}")
 
@@ -98,7 +98,7 @@ pcolor_kwargs = {
 
 
 # ## 2. Data Generation
-# 
+#
 # Generate synthetic spatio-temporal data from the FitzHugh-Nagumo model with spatially delayed copies.
 
 # ### Define Dynamical System
@@ -151,9 +151,7 @@ b = 0.8
 Iext = 0.65
 
 # Solve the ODE
-solution_fn = solve_ivp(
-    rhs_FNM, [0, T], x0, t_eval=t_solution, args=(tau1, a, b, Iext)
-)
+solution_fn = solve_ivp(rhs_FNM, [0, T], x0, t_eval=t_solution, args=(tau1, a, b, Iext))
 
 print(f"FitzHugh-Nagumo solution shape: {solution_fn.y.shape}")
 
@@ -220,7 +218,7 @@ plt.show()
 
 
 # ## 3. Model Configuration and Training
-# 
+#
 # Configure the SINDy-SHRED model using the `SINDySHRED` class.
 
 # ### Data Configuration
@@ -264,18 +262,18 @@ print(f"Time step: {dt:.6f}")
 
 # Visualize sensor time series
 fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(t_plot, load_X[:, sensor_locations], color='b', alpha=0.7)
-ax.axvline(t_plot[train_length], color='k', linestyle='--', label='Train/Test split')
-ax.axvline(t_plot[lags], color='r', linestyle=':', label='Lag window')
-ax.set_xlabel('Time')
-ax.set_ylabel('Sensor value')
-ax.set_title('Sensor Time Series')
+ax.plot(t_plot, load_X[:, sensor_locations], color="b", alpha=0.7)
+ax.axvline(t_plot[train_length], color="k", linestyle="--", label="Train/Test split")
+ax.axvline(t_plot[lags], color="r", linestyle=":", label="Lag window")
+ax.set_xlabel("Time")
+ax.set_ylabel("Sensor value")
+ax.set_title("Sensor Time Series")
 ax.legend()
 plt.show()
 
 
 # ### Initialize and Train Model
-# 
+#
 # The `SINDySHRED` class handles data preprocessing and model training.
 
 # In[10]:
@@ -283,7 +281,7 @@ plt.show()
 
 # Initialize the model
 model = SINDySHRED(
-    latent_dim=latent_dim, 
+    latent_dim=latent_dim,
     poly_order=poly_order,
     ode_order=1,  # 1st order ODE: z' = f(z)
     num_epochs=600,
@@ -293,18 +291,12 @@ model = SINDySHRED(
 
 # Fit the model
 model.fit(
-    num_sensors,
-    dt,
-    load_X,
-    lags,
-    train_length,
-    validate_length,
-    sensor_locations
+    num_sensors, dt, load_X, lags, train_length, validate_length, sensor_locations
 )
 
 
 # ## 4. SINDy Discovery
-# 
+#
 # Discover sparse governing equations from the learned latent space.
 
 # In[11]:
@@ -312,15 +304,13 @@ model.fit(
 
 # Perform SINDy identification with automatic plot saving
 model.sindy_identify(
-    threshold=threshold, 
-    plot_result=True, 
-    save_path=f"{RESULTS_DIR}/latent_comparison"
+    threshold=threshold, plot_result=True, save_path=f"{RESULTS_DIR}/latent_comparison"
 )
 print(f"Saved latent comparison plot to {RESULTS_DIR}/latent_comparison.png")
 
 
 # ### Auto-Tune Threshold (Adaptive/Nonparametric)
-# 
+#
 # Alternatively, use `auto_tune_threshold()` to automatically determine the best threshold.
 # By default it uses a nonparametric approach:
 # 1. First computes the least-squares solution (threshold=0)
@@ -333,10 +323,10 @@ print(f"Saved latent comparison plot to {RESULTS_DIR}/latent_comparison.png")
 # Auto-tune threshold using nonparametric approach
 # This computes least-squares solution first, then determines threshold range adaptively
 best_threshold, tune_results = model.auto_tune_threshold(
-    adaptive=True,           # Use nonparametric approach (default)
-    scale_factor=0.2,        # Max threshold = 0.3 * max(|coefficients|)
-    n_thresholds=10,         # Test 10 evenly spaced thresholds
-    metric="sparsity_stable", # Pick sparsest stable model
+    adaptive=True,  # Use nonparametric approach (default)
+    scale_factor=0.2,  # Max threshold = 0.3 * max(|coefficients|)
+    n_thresholds=10,  # Test 10 evenly spaced thresholds
+    metric="sparsity_stable",  # Pick sparsest stable model
     verbose=True,
 )
 
@@ -347,17 +337,17 @@ print(f"Stability at each: {tune_results['stable']}")
 
 
 # ### True Governing Equations
-# 
+#
 # For reference, the true governing equations are:
-# 
+#
 # **FitzHugh-Nagumo Model:**
 # $$\dot{v} = v - \frac{1}{3}v^3 - w + 0.65$$
 # $$\dot{w} = \frac{1}{\tau}(v + 0.7 - 0.8w)$$
-# 
+#
 # with time constant $\tau = 2$.
 
 # ## 5. Evaluation
-# 
+#
 # Evaluate reconstruction performance on the test set.
 
 # In[13]:
@@ -393,15 +383,21 @@ ax.set_xlabel("Time step")
 fig.tight_layout()
 
 # Save the reconstruction comparison plot
-fig.savefig(f"{RESULTS_DIR}/reconstruction_comparison.pdf", bbox_inches="tight", dpi=300)
-fig.savefig(f"{RESULTS_DIR}/reconstruction_comparison.png", bbox_inches="tight", dpi=300)
-print(f"Saved reconstruction comparison plot to {RESULTS_DIR}/reconstruction_comparison.pdf")
+fig.savefig(
+    f"{RESULTS_DIR}/reconstruction_comparison.pdf", bbox_inches="tight", dpi=300
+)
+fig.savefig(
+    f"{RESULTS_DIR}/reconstruction_comparison.png", bbox_inches="tight", dpi=300
+)
+print(
+    f"Saved reconstruction comparison plot to {RESULTS_DIR}/reconstruction_comparison.pdf"
+)
 
 plt.show()
 
 
 # ### Sensor-Level Predictions
-# 
+#
 # Compare real vs predicted at individual spatial locations (sensors).
 
 # In[15]:
@@ -418,11 +414,11 @@ print(f"Decoded physical shape: {sindy_physical.shape}")
 # Plot sensor-level comparisons: Ground Truth vs SINDy Prediction
 fig, axes = plotting.plot_sensor_predictions(
     test_ground_truth,
-    sindy_physical[:len(test_ground_truth)],
+    sindy_physical[: len(test_ground_truth)],
     sensor_locations=np.arange(n_space_dims),  # All spatial dims
     rows=2,
     cols=5,
-    save_path=f"{RESULTS_DIR}/sensor_predictions_grid.pdf"
+    save_path=f"{RESULTS_DIR}/sensor_predictions_grid.pdf",
 )
 fig.suptitle("Sensor-Level: Ground Truth vs SINDy Prediction")
 fig.tight_layout()
@@ -431,17 +427,17 @@ plt.show()
 
 
 # ## Summary
-# 
+#
 # This notebook demonstrated SINDy-SHRED on synthetic FitzHugh-Nagumo data:
-# 
+#
 # 1. Generated toy data from FitzHugh-Nagumo model with spatial delays
 # 2. Used the `SINDySHRED` class for streamlined model training
 # 3. Discovered sparse governing equations that approximate the true dynamics
 # 4. Achieved accurate reconstruction on held-out test data
 # 5. **Saved all results** to the `results/synthetic_data/` folder
-# 
+#
 # ### Saved Files
-# 
+#
 # | File | Description |
 # |------|-------------|
 # | `latent_train.npy` | Latent trajectories from training data |
@@ -452,11 +448,11 @@ plt.show()
 # | `config.json` | Model configuration and hyperparameters |
 # | `results.json` | All error metrics (reconstruction, SINDy latent, SINDy prediction) |
 # | `*.pdf/*.png` | Visualization plots |
-# 
+#
 # The `SINDySHRED` class simplifies the workflow compared to manual data preprocessing and model setup.
 
 # ## 6. Save Results
-# 
+#
 # Save the trained model, latent space values, and learned SINDy model to the results folder.
 
 # In[16]:
@@ -525,11 +521,15 @@ print(f"Saved configuration to {RESULTS_DIR}/config.json")
 # SINDy latent prediction error (training data)
 x_sim = model._x_sim
 z = model._gru_outs
-sindy_latent_error = np.linalg.norm(x_sim - z[:len(x_sim)]) / np.linalg.norm(z[:len(x_sim)])
+sindy_latent_error = np.linalg.norm(x_sim - z[: len(x_sim)]) / np.linalg.norm(
+    z[: len(x_sim)]
+)
 
 # SINDy physical prediction error (test data, use min length to handle shape mismatch)
 n_compare = min(len(sindy_physical), len(test_ground_truth))
-sindy_physical_error = np.linalg.norm(sindy_physical[:n_compare] - test_ground_truth[:n_compare]) / np.linalg.norm(test_ground_truth[:n_compare])
+sindy_physical_error = np.linalg.norm(
+    sindy_physical[:n_compare] - test_ground_truth[:n_compare]
+) / np.linalg.norm(test_ground_truth[:n_compare])
 
 # Save results as JSON
 results = {
@@ -542,9 +542,9 @@ with open(f"{RESULTS_DIR}/results.json", "w") as f:
 print(f"Saved results to {RESULTS_DIR}/results.json")
 
 # Print summary of saved files
-print("\n" + "="*50)
+print("\n" + "=" * 50)
 print("Saved files summary:")
-print("="*50)
+print("=" * 50)
 for f in sorted(os.listdir(RESULTS_DIR)):
     fpath = os.path.join(RESULTS_DIR, f)
     size = os.path.getsize(fpath)
@@ -552,7 +552,3 @@ for f in sorted(os.listdir(RESULTS_DIR)):
 
 
 # In[ ]:
-
-
-
-
