@@ -42,55 +42,60 @@ SINDy-SHRED combines **sparse dynamics identification** with **shallow recurrent
 
 ## Installation
 
-### Quick Start (Recommended)
+### Step 1 — Install PyTorch for your hardware
+
+PyTorch must be installed **before** the package so that the correct CUDA build is used.
+The default `pip install` picks a CPU-only or mismatched CUDA build; pick the command
+that matches your driver (check with `nvidia-smi`):
 
 ```bash
-git clone https://github.com/gaoliyao/sindy-shred.git
-cd sindy-shred
-pip install .                  # Core dependencies
-pip install ".[notebooks]"     # Include JupyterLab for notebooks
+# CUDA 12.8 — Blackwell (RTX 50xx / RTX PRO 6000) and other CUDA 12.x GPUs
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+
+# CUDA 12.4 — Ampere / Ada Lovelace (RTX 30xx / 40xx series)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+
+# CPU only
+pip install torch
 ```
 
-### Alternative Methods
-
-<details>
-<summary><b>Using uv (faster)</b></summary>
-
+Verify your GPU is visible before continuing:
 ```bash
-git clone https://github.com/gaoliyao/sindy-shred.git
-cd sindy-shred
-uv venv sindyshred && source sindyshred/bin/activate
-uv pip install ".[notebooks]"
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
-</details>
-
-<details>
-<summary><b>Using requirements.txt</b></summary>
+### Step 2 — Install SINDy-SHRED
 
 ```bash
 git clone https://github.com/gaoliyao/sindy-shred.git
 cd sindy-shred
-python -m venv sindyshred
-source sindyshred/bin/activate  # Linux/macOS
-# sindyshred\Scripts\activate   # Windows
-pip install -r requirements.txt
+pip install ".[notebooks]"     # won't reinstall torch if already present
 ```
 
-</details>
-
-<details>
-<summary><b>Using conda</b></summary>
+### Alternative: uv (faster installs)
 
 ```bash
 git clone https://github.com/gaoliyao/sindy-shred.git
 cd sindy-shred
-conda create -n sindyshred python=3.12
+uv venv .venv && source .venv/bin/activate
+
+# Install torch first with your CUDA version (example: CUDA 12.8)
+uv pip install torch --index-url https://download.pytorch.org/whl/cu128
+
+# Then the rest of the package
+uv pip install -e ".[notebooks]"
+```
+
+### Alternative: conda
+
+```bash
+git clone https://github.com/gaoliyao/sindy-shred.git
+cd sindy-shred
+conda create -n sindyshred python=3.11
 conda activate sindyshred
+pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install ".[notebooks]"
 ```
-
-</details>
 
 ### Verify Installation
 
@@ -126,7 +131,7 @@ source .venv/bin/activate  # Linux/macOS
 pip install -e ".[notebooks]"
 
 # Launch JupyterLab
-jupyter lab notebooks/fitzhugh_nagumo_highlevel.ipynb
+jupyter lab notebooks/fitzhugh_nagumo.ipynb
 ```
 
 Results will be saved to `notebooks/results/`.
@@ -249,9 +254,8 @@ physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 
 | Notebook | Description |
 |----------|-------------|
-| `fitzhugh_nagumo_highlevel.ipynb` | FitzHugh-Nagumo synthetic data — high-level `SINDySHRED` API |
-| `fitzhugh_nagumo_lowlevel.ipynb` | FitzHugh-Nagumo synthetic data — low-level network API |
-| `sea_surface_temperature.ipynb` | Sea Surface Temperature — high-level `SINDySHRED` API |
+| `fitzhugh_nagumo.ipynb` | FitzHugh-Nagumo synthetic data — full workflow from data generation to forecast |
+| `sea_surface_temperature.ipynb` | Sea Surface Temperature — real-world application |
 
 ---
 

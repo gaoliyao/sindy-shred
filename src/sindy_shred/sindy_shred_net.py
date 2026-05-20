@@ -277,7 +277,7 @@ class SINDy_SHRED_net(torch.nn.Module):
                 1, self.num_replicates, 1
             )
             return h_out_replicates, ht_replicates
-        return None
+        return h_out
 
     def sindys_threshold(self, threshold):
         self.e_sindy.thresholding(threshold)
@@ -332,9 +332,13 @@ def fit(
     val_error_list = []
     patience_counter = 0
     best_params = model.state_dict()
-    # allow overriding model's multi_step per training run (default keeps old behavior)
+    # Load one extra sample so slicing to current_bs below never produces an empty batch
+    # at the boundary of the last mini-batch.
     train_loader = DataLoader(train_dataset, shuffle=False, batch_size=batch_size + 1)
     for epoch in range(1, num_epochs + 1):
+        # Randomly vary the effective batch size each epoch in [batch_size//2, batch_size].
+        # This acts as implicit regularization: the model sees different gradient noise
+        # levels throughout training without requiring an explicit batch-size schedule.
         current_bs = int(np.random.randint(batch_size // 2, batch_size + 1))
         for idx_batch, data in enumerate(train_loader):
             data = data[:current_bs]

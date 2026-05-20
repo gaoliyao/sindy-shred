@@ -1,10 +1,23 @@
+# PyTorch — install this FIRST with the index URL matching your CUDA driver version.
+# Using pip install torch from this file will give a CPU-only or mismatched build.
+#
+#   CUDA 12.8 (Blackwell RTX 50xx / RTX PRO 6000):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu128
+#
+#   CUDA 12.4 (Ampere/Ada RTX 30xx/40xx):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu124
+#
+#   CPU only:
+#     pip install torch
+#
+torch>=2.0
+
 # Core dependencies
 numpy>=1.21
 scipy>=1.8
 matplotlib>=3.5
 seaborn>=0.12
 scikit-learn>=1.0
-torch>=2.0
 pysindy>=1.7.5
 
 # For running notebooks (optional but recommended)

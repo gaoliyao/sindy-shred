@@ -128,6 +128,8 @@ class SINDySHRED:
 
         self._gru_outs = None
         self._differentiation_method = None
+        self._latent_train_min = None  # per-dim min of raw training GRU outputs
+        self._latent_train_max = None  # per-dim max of raw training GRU outputs
 
     @staticmethod
     def relative_error(x_est, x_true):
@@ -386,6 +388,13 @@ class SINDySHRED:
         )
 
         self._shred = shred
+
+        # Cache per-dim min/max of raw training GRU outputs so gru_normalize and
+        # shred_decode don't recompute a full forward pass on every call.
+        with torch.no_grad():
+            gru_out_train = self.get_gru(data_type="train")
+        self._latent_train_min = torch.min(gru_out_train, dim=0).values
+        self._latent_train_max = torch.max(gru_out_train, dim=0).values
 
     def sindy_identify(
         self,
@@ -813,13 +822,19 @@ class SINDySHRED:
             stable_indices = np.where(stable_mask)[0]
             best_idx = stable_indices[np.argmin(results["sparsity"][stable_mask])]
         elif metric == "bic":
-            stable_indices = np.where(stable_mask)[0]
-            sparse_indicies = np.where(results["sparsity"] < self._latent_dim)
-            best_idx = stable_indices[np.argmin(results["bic"][stable_mask & sparse_indicies])]
+            sparse_mask = results["sparsity"] < self._latent_dim
+            combined_mask = stable_mask & sparse_mask
+            if not np.any(combined_mask):
+                combined_mask = stable_mask
+            combined_indices = np.where(combined_mask)[0]
+            best_idx = combined_indices[np.argmin(results["bic"][combined_mask])]
         elif metric == "aic":
-            stable_indices = np.where(stable_mask)[0]
-            sparse_indicies = np.where(results["sparsity"] < self._latent_dim)
-            best_idx = stable_indices[np.argmin(results["aic"][stable_mask & sparse_indicies])]
+            sparse_mask = results["sparsity"] < self._latent_dim
+            combined_mask = stable_mask & sparse_mask
+            if not np.any(combined_mask):
+                combined_mask = stable_mask
+            combined_indices = np.where(combined_mask)[0]
+            best_idx = combined_indices[np.argmin(results["aic"][combined_mask])]
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
@@ -842,8 +857,8 @@ class SINDySHRED:
         self,
         t=None,
         init_cond=None,
-        split=None,
-        init_from=None,
+        split="train",
+        init_from="last",
         return_velocity=False,
     ):
         """Predict the latent space using the discovered SINDy model.
@@ -942,13 +957,11 @@ class SINDySHRED:
         :rtype gru_outs: torch.tensor
         """
 
-        gru_out_train = self.get_gru(data_type="train")
         gru_outs = self.get_gru(data_type=data_type)
 
-        # Normalization
         for n in range(self._latent_dim):
-            gru_outs[:, n] = (gru_outs[:, n] - torch.min(gru_out_train[:, n])) / (
-                torch.max(gru_out_train[:, n]) - torch.min(gru_out_train[:, n])
+            gru_outs[:, n] = (gru_outs[:, n] - self._latent_train_min[n]) / (
+                self._latent_train_max[n] - self._latent_train_min[n]
             )
         gru_outs = 2 * gru_outs - 1
         return gru_outs
@@ -988,42 +1001,21 @@ class SINDySHRED:
         :return: Physical, high-dimensional signal in min-max scaled space.
         :rtype: numpy.ndarray
         """
-        # Ensure latent space trajectories are a numpy array if needed
         z = np.array(z)
 
-        # Convert scaling from [-1, 1] to [0, 1]
-        z = (z + 1) / 2
-
-        # Perform the Min-Max reverse transformation using the training SINDy-SHRED
-        # latent space
-        gru_out_train, _ = self._shred.gru_outputs(self._train_data.X, sindy=True)
-        gru_out_train = gru_out_train[:, 0, :]
-        gru_out_train = gru_out_train.detach().cpu().numpy()
-        # Each latent space dimension is normalized by itself.
+        # Reverse the [-1, 1] normalization applied in gru_normalize back to the
+        # original GRU latent scale, using the bounds cached at fit() time.
+        z_denorm = np.zeros_like(z)
         for n in range(self._latent_dim):
-            z[:, n] = z[:, n] * (
-                np.max(gru_out_train[:, n]) - np.min(gru_out_train[:, n])
-            ) + np.min(gru_out_train[:, n])
+            lo = self._latent_train_min[n].item()
+            hi = self._latent_train_max[n].item()
+            z_denorm[:, n] = (z[:, n] + 1) / 2 * (hi - lo) + lo
 
-        # Perform the decoder reconstruction using the transformed SINDy-simulated data
-        latent_pred_sindy = torch.FloatTensor(z).to(
-            self._device
-        )  # Convert to torch tensor for reconstruction
+        z_tensor = torch.FloatTensor(z_denorm).to(self._device)
+        with torch.no_grad():
+            output = self._shred.decode(z_tensor)
 
-        # Pass the SINDy-simulated latent space data through the decoder
-        decoder_model = self._shred
-        output_sindy = decoder_model.linear1(latent_pred_sindy)
-        output_sindy = decoder_model.dropout(output_sindy)
-        output_sindy = torch.nn.functional.relu(output_sindy)
-        output_sindy = decoder_model.linear2(output_sindy)
-        output_sindy = decoder_model.dropout(output_sindy)
-        output_sindy = torch.nn.functional.relu(output_sindy)
-        output_sindy = decoder_model.linear3(output_sindy)
-
-        # Detach and convert the reconstructed data back to numpy for visualization
-        output_sindy_np = output_sindy.detach().cpu().numpy()
-
-        return output_sindy_np
+        return output.detach().cpu().numpy()
 
     def sensor_recon(self, data_type="test", return_scaled=False):
         """Reconstruct full state from sparse sensor measurements.

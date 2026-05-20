@@ -1,5 +1,6 @@
 """Data processing utilities for SINDy-SHRED."""
 
+import os
 from scipy.io import loadmat
 import numpy as np
 import scipy.linalg
@@ -7,14 +8,21 @@ import scipy.linalg
 # Re-export TimeSeriesDataset for backward compatibility
 from .utils import TimeSeriesDataset
 
-__all__ = ['TimeSeriesDataset', 'load_data', 'qr_place']
+__all__ = ['TimeSeriesDataset', 'load_data', 'qr_place', 'DATA_DIR']
+
+# Absolute path to the project-level Data/ folder, resolved from this file's location.
+# Works regardless of where notebooks or scripts are run from.
+DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'Data',
+)
 
 
 def load_data(name):
-    '''Takes string denoting data name and returns the corresponding (N x m) array 
+    '''Takes string denoting data name and returns the corresponding (N x m) array
     (N samples of m dimensional state)'''
     if name == 'SST':
-        load_X = loadmat('Data/SST_data.mat')['Z'].T
+        load_X = loadmat(os.path.join(DATA_DIR, 'SST_data.mat'))['Z'].T
         print(load_X.shape)
         mean_X = np.mean(load_X, axis=0)
         sst_locs = np.where(mean_X != 0)[0]
