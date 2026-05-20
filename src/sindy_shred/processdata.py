@@ -5,7 +5,7 @@ import numpy as np
 import scipy.linalg
 
 # Re-export TimeSeriesDataset for backward compatibility
-from utils import TimeSeriesDataset
+from .utils import TimeSeriesDataset
 
 __all__ = ['TimeSeriesDataset', 'load_data', 'qr_place']
 

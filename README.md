@@ -1,5 +1,4 @@
 # SINDy-SHRED
-# SINDy-SHRED
 
 **Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder Networks**
 
@@ -113,28 +112,24 @@ A ready-to-run notebook is available on Google Colab:
 
 [![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
 
-### Run Locally (Standalone Script)
-
-To run the synthetic data example as a standalone Python script:
+### Run Locally (Notebook)
 
 ```bash
 # Clone and setup
 git clone https://github.com/gaoliyao/sindy-shred.git
 cd sindy-shred
 
-# Create virtual environment
+# Create virtual environment and install
 python -m venv .venv
 source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate   # Windows
+pip install -e ".[notebooks]"
 
-# Install dependencies
-pip install -e .
-
-# Run the synthetic data example
-python synthetic_data_analysis_detailed.py
+# Launch JupyterLab
+jupyter lab notebooks/fitzhugh_nagumo_highlevel.ipynb
 ```
 
-Results will be saved to `results/synthetic_data/`.
+Results will be saved to `notebooks/results/`.
 
 ---
 
@@ -194,8 +189,8 @@ For finer control over training and inference:
 ```python
 import torch
 import pysindy as ps
-from sindy_shred_net import SINDy_SHRED_net, fit
-import sindy
+from sindy_shred.sindy_shred_net import SINDy_SHRED_net, fit
+from sindy_shred import sindy
 
 # Calculate library dimension
 library_dim = sindy.library_size(latent_dim, poly_order, include_sine=False, include_constant=True)
@@ -254,12 +249,9 @@ physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 
 | Notebook | Description |
 |----------|-------------|
-| `sst_sindy_shred_refactor.ipynb` | Sea Surface Temperature with high-level API |
-| `sst_sindy_shred.ipynb` | Sea Surface Temperature with low-level API |
-| `synthetic_data_sindy_shred_refactor.ipynb` | FitzHugh-Nagumo synthetic data with high-level API |
-| `synthetic_data_sindy_shred.ipynb` | FitzHugh-Nagumo synthetic data with low-level API |
-| `complex_data_sindy_shred_refactor.ipynb` | Complex dynamical systems with high-level API |
-| `complex_data_sindy_shred.ipynb` | Complex dynamical systems with low-level API |
+| `fitzhugh_nagumo_highlevel.ipynb` | FitzHugh-Nagumo synthetic data — high-level `SINDySHRED` API |
+| `fitzhugh_nagumo_lowlevel.ipynb` | FitzHugh-Nagumo synthetic data — low-level network API |
+| `sea_surface_temperature.ipynb` | Sea Surface Temperature — high-level `SINDySHRED` API |
 
 ---
 
@@ -267,12 +259,12 @@ physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 
 | Module | Description |
 |--------|-------------|
-| `sindy_shred.py` | High-level `SINDySHRED` class for end-to-end workflows |
-| `sindy_shred_net.py` | Core `SINDy_SHRED_net` neural network and training functions |
-| `sindy.py` | SINDy library functions for sparse dynamics identification |
-| `plotting.py` | Visualization utilities for latent space and predictions |
-| `processdata.py` | Data loading and preprocessing utilities |
-| `utils.py` | Helper functions (device selection, datasets) |
+| `sindy_shred.sindy_shred` | High-level `SINDySHRED` class for end-to-end workflows |
+| `sindy_shred.sindy_shred_net` | Core `SINDy_SHRED_net` neural network and training functions |
+| `sindy_shred.sindy` | SINDy library functions for sparse dynamics identification |
+| `sindy_shred.plotting` | Visualization utilities for latent space and predictions |
+| `sindy_shred.processdata` | Data loading and preprocessing utilities |
+| `sindy_shred.utils` | Helper functions (device selection, datasets) |
 
 ---
 
