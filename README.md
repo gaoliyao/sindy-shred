@@ -5,88 +5,76 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2501.13329-b31b1b.svg)](https://arxiv.org/abs/2501.13329)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
-[![YouTube](https://img.shields.io/badge/YouTube-Watch-red?logo=youtube)](https://www.youtube.com/watch?v=UYDfWJxvKGw)
 [![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
-[![GitHub](https://img.shields.io/badge/GitHub-sindy--shred-blue.svg)](https://github.com/gaoliyao/sindy-shred)
+[![YouTube](https://img.shields.io/badge/YouTube-Watch-red?logo=youtube)](https://www.youtube.com/watch?v=UYDfWJxvKGw)
 
-## Overview
+SINDy-SHRED learns low-dimensional latent dynamics from sparse sensor measurements and decodes those dynamics back into full spatiotemporal fields. It combines SHRED-style sequence encoding and reconstruction with SINDy-based sparse equation discovery, so the learned latent trajectories can be forecast with interpretable governing equations.
 
 <img width="924" alt="SINDy-SHRED Architecture" src="https://github.com/user-attachments/assets/4b37563a-f6cc-49e5-8bd9-44842b70959f" />
 
-SINDy-SHRED combines **sparse dynamics identification** with **shallow recurrent decoder networks** to reconstruct full spatiotemporal fields from sparse sensor measurements while discovering **interpretable governing equations** in the latent space.
+## What It Does
 
-**Key Features:**
+- Encodes sparse sensor histories with GRU layers.
+- Reconstructs high-dimensional fields with a shallow decoder network.
+- Regularizes training with SINDy terms in the latent space.
+- Discovers post-hoc symbolic latent dynamics with PySINDy.
+- Supports first-order systems, `z' = f(z)`, and second-order systems, `z'' = f(z, z')`.
+- Provides threshold search for sparse, stable SINDy models.
 
-- **SINDy regularization** enforces sparse, interpretable dynamics in the learned latent space
-- **Gated Recurrent Units (GRUs)** encode sequential sensor measurements into latent trajectories
-- **Shallow decoder network (SDN)** reconstructs high-dimensional fields from latent variables
-- **Post-hoc SINDy discovery** extracts symbolic governing equations from learned latent dynamics
-- **Automatic threshold tuning** via nonparametric coefficient-based search
-- **Support for 1st and 2nd order ODEs** (z' = f(z) and z'' = f(z, z'))
-
-**Applications:**
-
-- Sea Surface Temperature (SST) prediction
-- Flow over a cylinder
-- Isotropic turbulent flow
-- Video forecasting (e.g., pendulum dynamics)
-- Synthetic PDE systems
+Example applications include sea surface temperature forecasting, flow over a cylinder, isotropic turbulence, pendulum video prediction, and synthetic PDE systems.
 
 ## Paper
 
-**Title:** *Sparse Identification of Nonlinear Dynamics with SHallow REcurrent Decoder Networks (SINDy-SHRED)*
+The accompanying preprint is available on arXiv:
 
-**Preprint:** [arXiv:2501.13329](https://arxiv.org/pdf/2501.13329)
-
----
+**Sparse identification of nonlinear dynamics and Koopman operators with Shallow Recurrent Decoder Networks**  
+https://arxiv.org/abs/2501.13329
 
 ## Installation
 
-### Step 1 — Install PyTorch for your hardware
+SINDy-SHRED requires Python 3.9 or newer. Install PyTorch first so that you get the correct build for your CPU or GPU, then install the package.
 
-PyTorch must be installed **before** the package so that the correct CUDA build is used.
-The default `pip install` picks a CPU-only or mismatched CUDA build; pick the command
-that matches your driver (check with `nvidia-smi`):
+### 1. Install PyTorch
+
+Choose the command that matches your hardware. If you are using an NVIDIA GPU, check your supported CUDA version with `nvidia-smi`.
 
 ```bash
-# CUDA 12.8 — Blackwell (RTX 50xx / RTX PRO 6000) and other CUDA 12.x GPUs
+# CUDA 12.8
 pip install torch --index-url https://download.pytorch.org/whl/cu128
 
-# CUDA 12.4 — Ampere / Ada Lovelace (RTX 30xx / 40xx series)
+# CUDA 12.4
 pip install torch --index-url https://download.pytorch.org/whl/cu124
 
 # CPU only
 pip install torch
 ```
 
-Verify your GPU is visible before continuing:
+Verify the install:
+
 ```bash
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-### Step 2 — Install SINDy-SHRED
+### 2. Install SINDy-SHRED
 
 ```bash
 git clone https://github.com/gaoliyao/sindy-shred.git
 cd sindy-shred
-pip install ".[notebooks]"     # won't reinstall torch if already present
+pip install -e ".[notebooks]"
 ```
 
-### Alternative: uv (faster installs)
+For `uv` users:
 
 ```bash
 git clone https://github.com/gaoliyao/sindy-shred.git
 cd sindy-shred
-uv venv .venv && source .venv/bin/activate
-
-# Install torch first with your CUDA version (example: CUDA 12.8)
+uv venv .venv
+source .venv/bin/activate
 uv pip install torch --index-url https://download.pytorch.org/whl/cu128
-
-# Then the rest of the package
 uv pip install -e ".[notebooks]"
 ```
 
-### Alternative: conda
+For `conda` users:
 
 ```bash
 git clone https://github.com/gaoliyao/sindy-shred.git
@@ -94,63 +82,45 @@ cd sindy-shred
 conda create -n sindyshred python=3.11
 conda activate sindyshred
 pip install torch --index-url https://download.pytorch.org/whl/cu128
-pip install ".[notebooks]"
+pip install -e ".[notebooks]"
 ```
 
-### Verify Installation
+Confirm the package imports:
 
 ```bash
-python -c "import torch; import pysindy; import sindy_shred; print('Installation successful!')"
+python -c "import torch, pysindy, sindy_shred; print('SINDy-SHRED ready')"
 ```
 
-### Dataset
+## Data
 
-Download the dataset and place it in the `Data/` directory:
+Place datasets in the `Data/` directory. Example data are available here:
 
-[Google Drive: Dataset](https://drive.google.com/file/d/1IrKFsYEcUL8xxZ0PUSLC3VrpTvVneDhj/view?usp=sharing)
+https://drive.google.com/file/d/1IrKFsYEcUL8xxZ0PUSLC3VrpTvVneDhj/view?usp=sharing
 
----
+The repository includes notebooks for the FitzHugh-Nagumo example, sea surface temperature data, and flow over a cylinder.
 
 ## Quick Start
 
-A ready-to-run notebook is available on Google Colab:
-
-[![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
-
-### Run Locally (Notebook)
+Run a notebook locally:
 
 ```bash
-# Clone and setup
-git clone https://github.com/gaoliyao/sindy-shred.git
-cd sindy-shred
-
-# Create virtual environment and install
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
-pip install -e ".[notebooks]"
-
-# Launch JupyterLab
 jupyter lab notebooks/fitzhugh_nagumo.ipynb
 ```
 
-Results will be saved to `notebooks/results/`.
+Or open the hosted Colab notebook:
 
----
+[![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/drive/1Xxw3P_x9a8iKZ6RPe2ZfTb8rJoWtPwTK?usp=sharing)
 
-## Usage
+## Python API
 
-### High-Level API (Recommended)
-
-The `SINDySHRED` class provides an end-to-end interface:
+The high-level `SINDySHRED` class handles scaling, sensor-window construction, model training, latent equation discovery, and decoding.
 
 ```python
 from sindy_shred import SINDySHRED
 
-# Initialize the model
 model = SINDySHRED(
     latent_dim=3,
-    poly_order=1,
+    poly_order=2,
     hidden_layers=2,
     l1=350,
     l2=400,
@@ -162,46 +132,51 @@ model = SINDySHRED(
     sindy_regularization=10.0,
 )
 
-# Fit to data
 model.fit(
     num_sensors=3,
-    dt=1/52.0,
-    x_to_fit=data,  # shape: (time, space)
+    dt=1 / 52,
+    x_to_fit=data,                  # shape: (time, space)
     lags=52,
     train_length=1000,
     validate_length=30,
     sensor_locations=sensor_locations,
 )
 
-# Discover governing equations
 model.sindy_identify(threshold=0.05, plot_result=True)
 
-# Predict latent dynamics and decode to physical space
-z_predict = model.sindy_predict()
-forecast = model.shred_decode(z_predict)
-
-# Or use the convenience method
-forecast = model.forecast(n_steps=100)
-
-# Automatic threshold tuning
-best_threshold, results = model.auto_tune_threshold(adaptive=True)
+z_pred = model.sindy_predict(split="train", init_from="last")
+forecast_scaled = model.shred_decode(z_pred)
+forecast = model.forecast(n_steps=100, return_scaled=False)
 ```
 
-### Low-Level API
+Useful methods:
 
-For finer control over training and inference:
+| Method | Purpose |
+| --- | --- |
+| `fit(...)` | Train the SHRED encoder-decoder with SINDy regularization. |
+| `sindy_identify(...)` | Discover sparse latent dynamics from trained GRU trajectories. |
+| `auto_tune_threshold(...)` | Search for a sparse, stable SINDy threshold. |
+| `sindy_predict(...)` | Simulate the discovered latent dynamics. |
+| `shred_decode(...)` | Decode latent trajectories into scaled physical states. |
+| `forecast(...)` | Predict latent dynamics, decode them, and optionally invert scaling. |
+| `sensor_recon(...)` | Reconstruct full states directly from sparse sensor inputs. |
+
+## Lower-Level Access
+
+For custom training loops or experiments, use the underlying network and utilities directly:
 
 ```python
-import torch
-import pysindy as ps
-from sindy_shred.sindy_shred_net import SINDy_SHRED_net, fit
 from sindy_shred import sindy
+from sindy_shred.sindy_shred_net import SINDy_SHRED_net, fit
 
-# Calculate library dimension
-library_dim = sindy.library_size(latent_dim, poly_order, include_sine=False, include_constant=True)
+library_dim = sindy.library_size(
+    n=latent_dim,
+    poly_order=poly_order,
+    use_sine=False,
+    include_constant=True,
+)
 
-# Initialize the network
-shred = SINDy_SHRED_net(
+net = SINDy_SHRED_net(
     input_size=num_sensors,
     output_size=state_dim,
     hidden_size=latent_dim,
@@ -210,77 +185,52 @@ shred = SINDy_SHRED_net(
     l2=400,
     dropout=0.1,
     library_dim=library_dim,
-    poly_order=3,
+    poly_order=poly_order,
     include_sine=False,
     dt=dt,
 ).to(device)
 
-# Train with custom datasets
 validation_errors = fit(
-    shred,
+    net,
     train_dataset,
     valid_dataset,
     batch_size=128,
     num_epochs=600,
     lr=1e-3,
-    verbose=True,
     threshold=0.25,
-    patience=5,
     sindy_regularization=10.0,
-    thres_epoch=100,
 )
-
-# Extract latent trajectories
-gru_outs, _ = shred.gru_outputs(train_dataset.X, sindy=True)
-latent = gru_outs[:, 0, :].detach().cpu().numpy()
-
-# Post-hoc SINDy discovery
-model = ps.SINDy(
-    optimizer=ps.STLSQ(threshold=0.1),
-    feature_library=ps.PolynomialLibrary(degree=poly_order),
-)
-model.fit(latent_normalized, t=dt)
-model.print()
-
-# Simulate and decode predictions
-z_sim = model.simulate(init_cond, t_array)
-z_tensor = torch.tensor(z_denormalized, dtype=torch.float32).to(device)
-physical_pred = shred.decode(z_tensor)  # Decode latent to physical space
 ```
 
----
-
-## Example Notebooks
+## Notebooks
 
 | Notebook | Description |
-|----------|-------------|
-| `fitzhugh_nagumo.ipynb` | FitzHugh-Nagumo synthetic data — full workflow from data generation to forecast |
-| `sea_surface_temperature.ipynb` | Sea Surface Temperature — real-world application |
+| --- | --- |
+| `notebooks/fitzhugh_nagumo.ipynb` | End-to-end synthetic FitzHugh-Nagumo workflow. |
+| `notebooks/sea_surface_temperature.ipynb` | Sea surface temperature reconstruction and forecasting. |
+| `notebooks/flow_over_cylinder.ipynb` | Flow-over-cylinder reconstruction and latent forecasting. |
 
----
+Notebook outputs are written under `notebooks/results/`.
 
-## Module Structure
+## Package Layout
 
 | Module | Description |
-|--------|-------------|
-| `sindy_shred.sindy_shred` | High-level `SINDySHRED` class for end-to-end workflows |
-| `sindy_shred.sindy_shred_net` | Core `SINDy_SHRED_net` neural network and training functions |
-| `sindy_shred.sindy` | SINDy library functions for sparse dynamics identification |
-| `sindy_shred.plotting` | Visualization utilities for latent space and predictions |
-| `sindy_shred.processdata` | Data loading and preprocessing utilities |
-| `sindy_shred.utils` | Helper functions (device selection, datasets) |
-
----
+| --- | --- |
+| `sindy_shred.sindy_shred` | High-level `SINDySHRED` workflow class. |
+| `sindy_shred.sindy_shred_net` | Core PyTorch network and training routine. |
+| `sindy_shred.sindy` | SINDy library construction and sparse dynamics helpers. |
+| `sindy_shred.miosr_utils` | MIOSR-based sparse model utilities. |
+| `sindy_shred.processdata` | Data loading and preprocessing helpers. |
+| `sindy_shred.plotting` | Plotting utilities for latent dynamics and reconstructions. |
+| `sindy_shred.utils` | Device selection and dataset wrappers. |
 
 ## Results
 
-SINDy-SHRED achieves state-of-the-art performance compared to existing methods including Convolutional LSTM, PredRNN, ResNet, and SimVP.
-
-### Sea Surface Temperature Prediction
+### Sea Surface Temperature
 
 <img width="1284" alt="SST Results" src="https://github.com/user-attachments/assets/ecb0bedc-ab58-46f5-81d5-51a2cc31e575" />
 
-### Flow over a Cylinder
+### Flow Over a Cylinder
 
 <img width="1284" alt="Cylinder Flow" src="https://github.com/user-attachments/assets/f719b85e-c0cf-4f95-a195-fb331e3819b2" />
 
@@ -292,24 +242,26 @@ SINDy-SHRED achieves state-of-the-art performance compared to existing methods i
 
 <img width="1284" alt="Pendulum Prediction" src="https://github.com/user-attachments/assets/65e4260d-2723-4de1-ae9c-d95212cad939" />
 
-### Loss Landscape Visualization
+### Loss Landscape
 
 <img width="1284" alt="Loss Landscape" src="https://github.com/user-attachments/assets/0d81d984-4f0a-4144-b87b-c94b7d969a67" />
 
----
-
 ## Citation
 
-If you find SINDy-SHRED useful in your research, please cite:
+If you use SINDy-SHRED in your research, please cite:
 
 ```bibtex
 @misc{gao2025sparse,
-      title={Sparse identification of nonlinear dynamics and Koopman operators with Shallow Recurrent Decoder Networks},
-      author={Mars Liyao Gao and Jan P. Williams and J. Nathan Kutz},
-      year={2025},
-      eprint={2501.13329},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2501.13329},
+  title={Sparse identification of nonlinear dynamics and Koopman operators with Shallow Recurrent Decoder Networks},
+  author={Mars Liyao Gao and Jan P. Williams and J. Nathan Kutz},
+  year={2025},
+  eprint={2501.13329},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2501.13329}
 }
 ```
+
+## License
+
+This project is released under the MIT License. See [LICENSE](LICENSE).
